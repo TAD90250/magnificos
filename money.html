@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money due</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap" id="body"><div class="loading">Loading&hellip;</div></div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("money.html", "Money due", async (meta) => {
+  const { $, $$, esc, getJSON, ownerLink } = L;
+  const M = await getJSON("data/money.json");
+  $("#pageSub").textContent = "What each owner owes, and what they are owed";
+  if (!M.seasons.length) { $("#body").innerHTML = '<p class="note">Money tracking has not started yet.</p>'; return; }
+  const q = new URLSearchParams(location.search).get("y");
+  let cur = M.seasons.find((s) => String(s.year) === q) || M.seasons[0];
+  const usd = (n, sign) => { const v = Math.round(n * 100) / 100; const s = "$" + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    return sign ? (v > 0 ? "+" : v < 0 ? "\u2212" : "") + s : (v < 0 ? "\u2212" : "") + s; };
+  const due = (n) => n > 0.004 ? '<b style="color:var(--win)">' + usd(n, true) + "</b>" : n < -0.004 ? '<b style="color:var(--loss)">' + usd(n, true) + "</b>" : '<span class="muted">$0</span>';
+
+  function draw() {
+    const pills = M.seasons.length > 1 ? '<div class="pills" id="pills">' + M.seasons.map((s) => '<button class="pill' + (s === cur ? " on" : "") + '" data-y="' + s.year + '">' + s.year + "</button>").join("") + "</div>" : "";
+    const dash = '<span class="muted">–</span>';
+    const owedTo = cur.owners.filter((o) => o.net > 0.004).reduce((a, o) => a + o.net, 0);
+    const owes = cur.owners.filter((o) => o.net < -0.004).reduce((a, o) => a - o.net, 0);
+    const summary = '<div class="grid g3" style="margin-bottom:14px"><div class="card pad"><div class="muted" style="font-size:.82rem">League owes owners (net)</div><div style="font-size:1.5rem;font-weight:800;color:var(--win)">' + usd(owedTo) + '</div></div>' +
+      '<div class="card pad"><div class="muted" style="font-size:.82rem">Owners owe league (net)</div><div style="font-size:1.5rem;font-weight:800;color:var(--loss)">' + usd(owes) + '</div></div>' +
+      '<div class="card pad"><div class="muted" style="font-size:.82rem">Season</div><div style="font-size:1.5rem;font-weight:800">' + cur.year + '</div><div class="muted" style="font-size:.82rem">' + (cur.complete ? "complete" : "in progress") + "</div></div></div>";
+    const table = '<div class="card table-wrap"><table><thead><tr><th>#</th><th class="l">Owner</th><th>Prizes won</th><th>Fee total</th><th>Paid in</th><th>Still owes</th><th>Net</th></tr></thead><tbody>' +
+      cur.owners.map((o, i) => "<tr><td class='rank'>" + (i + 1) + "</td><td class='l'><b>" + ownerLink(o.slug, o.nick) + "</b></td><td>" + (o.won ? usd(o.won) : dash) + "</td>" +
+        "<td>" + (o.feeTotal == null ? '<span class="muted" title="fee not entered">' + (o.penalties ? usd(o.penalties) + " pen." : "–") + "</span>" : usd(o.feeTotal)) + "</td>" +
+        "<td>" + (o.paidIn == null ? dash : usd(o.paidIn)) + "</td><td>" + (o.owe == null ? dash : o.owe < 0 ? '<span style="color:var(--win)">' + usd(o.owe) + "</span>" : usd(o.owe)) + "</td><td>" + due(o.net) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+    const pays = cur.payments.length ? '<section><h2 class="sec-title">Prize money already paid out</h2><div class="card table-wrap"><table><thead><tr><th class="l">Owner</th><th>Amount</th><th class="l">Note</th></tr></thead><tbody>' +
+      cur.payments.map((p) => "<tr><td class='l'>" + ownerLink(p.slug, p.nick) + "</td><td>" + usd(p.amount) + "</td><td class='l muted'>" + esc(p.note) + "</td></tr>").join("") + "</tbody></table></div></section>" : "";
+    $("#body").innerHTML = pills + summary + table +
+      '<p class="note"><b>Fee total</b> = the owner\'s fee plus penalties (lowest-score fees and any other penalties). <b>Still owes</b> = fee total minus what they have paid in; a negative number (green) means they have overpaid. ' +
+      '<b>Net</b> = prizes won minus what they still owe, minus any prize money already paid to them: <span style="color:var(--win)"><b>+</b> the league owes the owner</span>, <span style="color:var(--loss)"><b>\u2212</b> the owner owes the league</span>. ' +
+      'An owner shown with a dash has no fee entered yet, so only penalties are counted for them. See the <a href="payouts.html?y=' + cur.year + '">payouts page</a> for the winners.</p>' +
+      (M.feeNote ? '<p class="note">' + esc(M.feeNote) + "</p>" : "") + pays;
+    $$("#pills .pill").forEach((b) => b.addEventListener("click", () => { cur = M.seasons.find((s) => String(s.year) === b.dataset.y); history.replaceState(null, "", "?y=" + cur.year); draw(); }));
+  }
+  draw();
+});
+</script>
+</body>
+</html>

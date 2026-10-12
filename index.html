@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FFL Magnificos</title>
+<meta name="description" content="Standings, champions, records and history for the FFL Magnificos fantasy football league.">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<section class="hero">
+  <div class="wrap">
+    <h1 id="h1">FFL <em>Magnificos</em></h1>
+    <p id="tag">Fantasy football history, records and bragging rights.</p>
+    <div class="cta">
+      <a class="btn" href="standings.html">Standings</a>
+      <a class="btn ghost" href="owners.html">Owners</a>
+      <a class="btn ghost" href="records.html">Record book</a>
+    </div>
+    <div class="owner-chips" id="ochips" aria-label="Owner pages"></div>
+  </div>
+</section>
+<main>
+  <div class="wrap">
+    <section id="photos" hidden>
+      <h2 class="sec-title">Through the years</h2>
+      <div class="strip" id="strip"></div>
+    </section>
+
+    <section>
+      <h2 class="sec-title">Hall of champions</h2>
+      <div class="champs" id="champs"></div>
+    </section>
+
+    <section>
+      <h2 class="sec-title"><span id="curTitle">This season</span> <small id="curSub"></small></h2>
+      <div class="card table-wrap"><table id="cur"></table></div>
+      <p class="note"><a href="standings.html">All seasons &rarr;</a></p>
+    </section>
+
+    <section id="watch" hidden>
+      <h2 class="sec-title">Record watch <small id="watchSub"></small></h2>
+      <div class="grid g2">
+        <div class="card"><div class="pad"><h3 class="sub-title">Record book</h3><div id="wRec"></div></div></div>
+        <div class="card"><div class="pad"><h3 class="sub-title">All-time stats</h3><div id="wAt"></div></div></div>
+      </div>
+      <p class="note" id="watchNote"></p>
+    </section>
+
+    <section>
+      <h2 class="sec-title">Explore</h2>
+      <div class="grid g3" id="links"></div>
+    </section>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("index.html", null, async (meta) => {
+  const { $, esc, getJSON, rec, ownerLink } = L;
+  const [seasons] = await Promise.all([getJSON("data/seasons.json")]);
+  const years = meta.currentSeason - meta.firstYear + 1;
+  $("#tag").textContent = "Fantasy football since " + meta.firstYear + " · " + years + " seasons · " +
+    meta.owners.length + " owners · " + meta.champions.length + " champions crowned.";
+
+  // owner shortcuts in the hero (most titles first)
+  $("#ochips").innerHTML = '<span class="lbl">Owner pages</span>' + meta.owners.map((o) =>
+    '<a class="chip" href="owner.html?o=' + encodeURIComponent(o.slug) + '">' + esc(o.nick) +
+    (o.titles ? ' <span class="t">🏆' + o.titles + "</span>" : "") + "</a>").join("");
+
+  // public photos (optional)
+  try {
+    const list = await getJSON("images/public/manifest.json");
+    if (list.length) {
+      $("#strip").innerHTML = list.map((p) =>
+        '<figure class="thumb" style="margin:0"><img loading="lazy" src="images/public/' + encodeURI(p.file) + '" alt="' + esc(p.caption || "League photo") + '">' +
+        '<figcaption class="cap">' + (p.year ? esc(p.year) + " · " : "") + esc(p.caption || "") + "</figcaption></figure>").join("");
+      $("#strip").className = "strip" + (list.length === 1 ? " solo" : list.length <= 3 ? " few" : "");
+      $("#photos").hidden = false;
+    }
+  } catch (e) { /* no public photos yet */ }
+
+  // champions
+  $("#champs").innerHTML = meta.champions.slice().reverse().map((c) =>
+    '<div class="card champ-card"><div class="y">' + c.year + '</div><div class="n">🏆 ' + ownerLink(c.slug, c.nick) +
+    '</div><div class="t" title="' + esc(c.team) + '">' + esc(c.team) + "</div></div>").join("");
+
+  // current season
+  const cur = seasons[0];
+  $("#curTitle").textContent = cur.year + (cur.inProgress ? " season — in progress" : " final standings");
+  $("#curSub").textContent = cur.inProgress ? "through week " + cur.weeksPlayed : "";
+  $("#cur").innerHTML = "<thead><tr><th>#</th><th class='l'>Owner</th><th class='l'>Team</th><th>W-L</th><th>PF</th><th>PA</th></tr></thead><tbody>" +
+    cur.standings.map((t) => "<tr><td class='rank'>" + t.rank + "</td><td class='l'>" + ownerLink(t.slug, t.nick) + "</td><td class='l'>" + esc(t.team) +
+      "</td><td>" + rec(t.w, t.l, t.t) + "</td><td>" + L.num(t.pf) + "</td><td>" + L.num(t.pa) + "</td></tr>").join("") + "</tbody>";
+  $("#cur th:nth-child(2)").className = "l";
+
+
+  // record watch: what the latest week changed in the record book and the all-time tables
+  try {
+    const A = await getJSON("data/activity.json");
+    const multi = A.weeks.length > 1;
+    const label = A.weeks.length ? (multi ? "weeks " + A.weeks[0].week + "–" + A.weeks[A.weeks.length - 1].week : "week " + A.weeks[0].week) + ", " + A.weeks[A.weeks.length - 1].year : "";
+    $("#watchSub").textContent = "what changed in " + label;
+    const who = (e) => e.slug ? ownerLink(e.slug, e.who) : esc(e.who);
+    const wk = (e) => multi ? '<span class="muted">Wk ' + e.week + " · </span>" : "";
+    const badge = (e) => e.rank === 1 ? '<span class="badge gold">NEW RECORD</span>' : '<span class="badge blue">' + (e.prev ? "up to #" + e.rank : "new at #" + e.rank) + "</span>";
+    const rows = (list, fn, empty) => list.length ? '<ul class="feed">' + list.map(fn).join("") + "</ul>" : '<p class="muted" style="margin:0">' + empty + "</p>";
+    $("#wRec").innerHTML = rows(A.records, (e) =>
+      "<li>" + badge(e) + " <b>" + esc(e.cat) + "</b><br>" + wk(e) + who(e) + ' <span class="muted">· ' + esc(e.detail) + (e.prev ? " (was #" + e.prev + ")" : "") + "</span></li>",
+      "No records fell in " + label + ".");
+    $("#wAt").innerHTML = rows(A.alltime, (e) =>
+      "<li>" + (e.rank === 1 ? '<span class="badge gold">TAKES THE LEAD</span>' : '<span class="badge blue">up to #' + e.rank + "</span>") + " <b>" + esc(e.cat) + "</b><br>" + wk(e) + who(e) +
+      ' <span class="muted">· ' + esc(e.value) + " (was #" + e.prev + ")</span></li>",
+      "No changes to the all-time tables in " + label + ".");
+    $("#watchNote").innerHTML = esc(A.scope) + " games, consolation not counted. Per-game and percentage tables only show a change when the leader changes. See the <a href='records.html'>record book</a> and <a href='alltime.html'>all-time page</a>.";
+    $("#watch").hidden = false;
+  } catch (e) { /* no activity file yet */ }
+
+  const links = [["standings.html", "Standings", "Every season, final tables"], ["owners.html", "Owners", "All-time leaderboard & profiles"],
+    ["alltime.html", "All-time stats", "Wins, losses, win % and points, ranked"],
+    ["records.html", "Record book", "Highest scores, blowouts, best seasons"], ["h2h.html", "Head-to-head", "Who owns who"],
+    ["payouts.html", "Payouts", "Weekly and season-end prizes, and winners"], ["money.html", "Money due", "Who owes, who is owed"], ["rules.html", "League rules", "How the league works"],
+    ["draft.html", "Draft history", "Every pick we have on record"], ["photos.html", "Photo vault 🔒", "Password required"]];
+  $("#links").innerHTML = links.map(([h, t, d]) => '<a class="card linkcard" href="' + h + '"><b>' + t + "</b><span>" + d + "</span></a>").join("");
+});
+</script>
+</body>
+</html>

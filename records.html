@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Record book</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="pills" id="pills" role="group" aria-label="Which games count"></div>
+    <p class="note" id="scopeNote"></p>
+    <div id="body"><div class="loading">Loading&hellip;</div></div>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("records.html", "Record book", async (meta) => {
+  const { $, $$, esc, getJSON, rec, pct, num, ownerLink } = L;
+  const RR = await getJSON("data/records.json");
+  $("#pageSub").textContent = "Every game and season on record, " + meta.firstYear + "–" + meta.currentSeason;
+  const NOTES = {
+    reg: "Showing regular-season games only. Season tables use regular-season records.",
+    regpo: "Showing regular-season and playoff games (quarterfinals, semifinals and championship). The 3rd-place game and consolation games are not counted.",
+    po: "Showing playoff games only (quarterfinals, semifinals and championship; the 3rd-place game is not counted). Season tables cover playoff games only, and the bar for player averages is lower (5 starts).",
+    all: "Showing every game, including consolation-bracket games."
+  };
+  const q = new URLSearchParams(location.search).get("scope");
+  let scope = RR.scopes.find((s) => s.key === q) || RR.scopes.find((s) => s.key === RR.defaultScope) || RR.scopes[0];
+
+  const typ = (t) => t === "Regular" ? "" : ' <span class="badge">' + esc(t.replace("Playoff - ", "Playoff ")) + "</span>";
+  const gameTable = (list, scoreLabel, valFn) => '<div class="card table-wrap"><table><thead><tr><th>#</th><th class="l">Owner</th><th>' + scoreLabel + '</th><th>Opp. score</th><th class="l">Opponent</th><th>Year</th><th>Wk</th></tr></thead><tbody>' +
+    list.map((g, i) => "<tr><td class='rank'>" + (i + 1) + "</td><td class='l'><b>" + ownerLink(g.slug, g.owner) + "</b>" + typ(g.type) + "</td><td><b>" + valFn(g) + "</b></td><td>" + num(g.oppScore, 2) +
+      "</td><td class='l'>" + ownerLink(g.oppSlug, g.opp) + "</td><td>" + g.year + "</td><td>" + g.week + "</td></tr>").join("") + "</tbody></table></div>";
+  const seasonTable = (list, extra) => '<div class="card table-wrap"><table><thead><tr><th>#</th><th class="l">Owner</th><th class="l">Team</th><th>Year</th><th>Record</th>' + extra.h + '</tr></thead><tbody>' +
+    list.map((g, i) => "<tr><td class='rank'>" + (i + 1) + "</td><td class='l'><b>" + ownerLink(g.slug, g.owner) + "</b></td><td class='l'>" + esc(g.team) + "</td><td>" + g.year + "</td><td>" + rec(g.w, g.l, g.t) + "</td>" + extra.c(g) + "</tr>").join("") + "</tbody></table></div>";
+  const ptable = (list, key) => {
+    const cols = { pts: ["Points", (g) => num(g.pts)], avg: ["Avg / start", (g) => num(g.avg)], starts: ["Starts", (g) => g.starts] };
+    const rest = ["pts", "avg", "starts"].filter((k) => k !== key);
+    const head = [key].concat(rest).map((k) => "<th>" + cols[k][0] + "</th>").join("");
+    return '<div class="card table-wrap"><table><thead><tr><th>#</th><th class="l">Player</th><th>Pos</th>' + head + '<th>Years</th><th>Owners</th><th class="l">Most points for</th></tr></thead><tbody>' +
+      (list || []).map((g, i) => "<tr><td class='rank'>" + (i + 1) + "</td><td class='l'><b>" + esc(g.name) + "</b></td><td>" + esc(g.pos) + "</td>" +
+        [key].concat(rest).map((k, j) => "<td>" + (j === 0 ? "<b>" + cols[k][1](g) + "</b>" : cols[k][1](g)) + "</td>").join("") +
+        "<td>" + (g.years[0] === g.years[1] ? g.years[0] : g.years[0] + "\u2013" + g.years[1]) + "</td><td>" + g.owners + "</td><td class='l'>" + ownerLink(g.topSlug, g.topOwner) + "</td></tr>").join("") + "</tbody></table></div>";
+  };
+  const sec = (t, sub, html) => '<section><h2 class="sec-title">' + t + (sub ? " <small>" + sub + "</small>" : "") + "</h2>" + html + "</section>";
+
+  function draw() {
+  const R = scope;
+  $("#pills").innerHTML = RR.scopes.map((s) => '<button class="pill' + (s.key === scope.key ? " on" : "") + '" data-k="' + s.key + '">' + esc(s.label) + "</button>").join("");
+  $$("#pills .pill").forEach((b) => b.addEventListener("click", () => {
+    scope = RR.scopes.find((x) => x.key === b.dataset.k);
+    history.replaceState(null, "", "?scope=" + scope.key);
+    draw();
+  }));
+  $("#scopeNote").textContent = NOTES[scope.key] || "";
+  $("#body").innerHTML =
+    sec("Highest single-game scores", "", gameTable(R.highScores, "Score", (g) => num(g.score, 2))) +
+    sec("Lowest single-game scores", "", gameTable(R.lowScores, "Score", (g) => num(g.score, 2))) +
+    sec("Biggest blowouts", "margin of victory", gameTable(R.blowouts, "Margin", (g) => "+" + num(g.margin, 2))) +
+    sec("Closest finishes", "narrowest wins", gameTable(R.closest, "Margin", (g) => "+" + num(g.margin, 2))) +
+    sec("Most points in a season", "season total in the selected games", seasonTable(R.seasonPoints, { h: "<th>PF</th>", c: (g) => "<td><b>" + num(g.pf) + "</b></td>" })) +
+    sec("Fewest points in a season", "completed seasons", seasonTable(R.seasonPointsLow, { h: "<th>PF</th>", c: (g) => "<td><b>" + num(g.pf) + "</b></td>" })) +
+    sec("Best season records", "", seasonTable(R.bestRecords, { h: "<th>Win %</th><th>PF</th>", c: (g) => "<td><b>" + pct(g.pct) + "</b></td><td>" + num(g.pf) + "</td>" })) +
+    sec("Worst season records", "", seasonTable(R.worstRecords, { h: "<th>Win %</th><th>PF</th>", c: (g) => "<td><b>" + pct(g.pct) + "</b></td><td>" + num(g.pf) + "</td>" })) +
+    sec("Most career points by a player", "points while started, across every owner and season", ptable(R.playerTotals, "pts")) +
+    sec("Highest average points per start", "players with at least " + R.minStarts + " starts", ptable(R.playerAvg, "avg")) +
+    sec("Most career points, no quarterbacks", "points while started, QBs left out", ptable(R.playerTotalsNoQB, "pts")) +
+    sec("Highest average points per start, no quarterbacks", "players with at least " + R.minStarts + " starts, QBs left out", ptable(R.playerAvgNoQB, "avg")) +
+    sec("Most career starts by a player", "games in a starting lineup, across every owner and season", ptable(R.playerStarts, "starts")) +
+    sec("Biggest player games", "points while started" + (R.excludesKickersDefenses ? "" : "; kickers &amp; defenses included"),
+      '<div class="card table-wrap"><table><thead><tr><th>#</th><th class="l">Player</th><th>Pos</th><th>Pts</th><th class="l">Owner</th><th>Year</th><th>Wk</th></tr></thead><tbody>' +
+      R.playerGames.map((g, i) => "<tr><td class='rank'>" + (i + 1) + "</td><td class='l'><b>" + esc(g.name) + "</b></td><td>" + esc(g.pos) + "</td><td><b>" + num(g.pts) + "</b></td><td class='l'>" + ownerLink(g.slug, g.owner) + "</td><td>" + g.year + "</td><td>" + g.week + "</td></tr>").join("") + "</tbody></table></div>");
+  }
+  draw();
+});
+</script>
+</body>
+</html>

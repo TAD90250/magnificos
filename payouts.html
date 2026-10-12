@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payouts</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap" id="body"><div class="loading">Loading&hellip;</div></div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("payouts.html", "Payouts", async (meta) => {
+  const { $, $$, esc, getJSON, ownerLink } = L;
+  const P = await getJSON("data/payouts.json");
+  $("#pageSub").textContent = "Weekly and season-end prizes, and who has won them";
+  if (!P.seasons.length) { $("#body").innerHTML = '<p class="note">No payouts to show yet.</p>'; return; }
+  const q = new URLSearchParams(location.search).get("y");
+  let cur = P.seasons.find((s) => String(s.year) === q) || P.seasons[0];
+  const usd = (n) => "$" + (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const winners = (it) => it.winners.length
+    ? it.winners.map((w) => "<b>" + ownerLink(w.slug, w.nick) + "</b>").join(" &amp; ") + (it.winners.length > 1 ? ' <span class="muted">(split)</span>' : "")
+    : '<span class="muted">' + (it.status === "open" ? "in progress" : "not decided yet") + "</span>";
+  const detail = (it) => it.winners.length ? it.winners.map((w) => esc(w.txt)).join("<br>") : esc(it.note || "");
+  const itemRows = (list) => list.map((it) => "<tr><td class='l' style='white-space:normal;min-width:240px;max-width:430px'><b>" + esc(it.label) + "</b>" + (it.rule ? "<div class='muted' style='font-size:.8rem;font-weight:400'>" + esc(it.rule) + "</div>" : "") +
+    "</td><td>" + usd(it.amount) + "</td><td class='l'>" + winners(it) + "</td><td class='l muted' style='white-space:normal'>" + detail(it) + "</td></tr>").join("");
+  const head = "<thead><tr><th class='l'>Payout</th><th>Prize</th><th class='l'>Winner</th><th class='l'>Result</th></tr></thead>";
+
+  function draw() {
+    const decided = cur.schedule.filter((s) => s.winners.length);
+    const paid = decided.reduce((a, s) => a + s.amount, 0);
+    const pills = P.seasons.length > 1 ? '<div class="pills" id="pills">' + P.seasons.map((s) => '<button class="pill' + (s === cur ? " on" : "") + '" data-y="' + s.year + '">' + s.year + "</button>").join("") + "</div>" : "";
+    const cards = '<div class="grid g3" style="margin-bottom:14px">' +
+      '<div class="card pad"><div class="muted" style="font-size:.82rem">Weekly prizes decided</div><div style="font-size:1.5rem;font-weight:800">' + decided.length + " of " + cur.schedule.length + '</div></div>' +
+      '<div class="card pad"><div class="muted" style="font-size:.82rem">Weekly prize money awarded</div><div style="font-size:1.5rem;font-weight:800;color:var(--win)">' + usd(paid) + '</div><div class="muted" style="font-size:.82rem">of ' + usd(cur.weeklyTotal) + '</div></div>' +
+      '<div class="card pad"><div class="muted" style="font-size:.82rem">Played through</div><div style="font-size:1.5rem;font-weight:800">Week ' + cur.weeksPlayed + '</div><div class="muted" style="font-size:.82rem">' + cur.year + (cur.complete ? " (complete)" : " season") + "</div></div></div>";
+    const board = cur.board.length ? '<section><h2 class="sec-title">Prize money won, ' + cur.year + '</h2><div class="card table-wrap"><table><thead><tr><th>#</th><th class="l">Owner</th><th>Won so far</th></tr></thead><tbody>' +
+      cur.board.map((b, i) => "<tr><td class='rank'>" + (i + 1) + "</td><td class='l'><b>" + ownerLink(b.slug, b.nick) + "</b></td><td><b>" + usd(b.won) + "</b></td></tr>").join("") + "</tbody></table></div></section>" : "";
+    const low = cur.lowest.length ? '<section><h2 class="sec-title">Lowest scorers <small>each pays ' + usd(cur.lowest[0].amount) + " (regular season only)</small></h2><div class='card table-wrap'><table><thead><tr><th>Week</th><th class='l'>Lowest scorers</th></tr></thead><tbody>" +
+      cur.lowest.map((l) => "<tr><td><b>" + l.week + "</b></td><td class='l'>" + l.owners.map((o) => ownerLink(o.slug, o.nick) + ' <span class="muted">' + L.num(o.pf, 2) + "</span>").join(" &nbsp;·&nbsp; ") + "</td></tr>").join("") + "</tbody></table></div></section>" : "";
+    const pen = cur.penalties.length ? '<section><h2 class="sec-title">Other penalties</h2><div class="card table-wrap"><table><thead><tr><th>Week</th><th class="l">Owner</th><th>Fee</th><th class="l">Reason</th></tr></thead><tbody>' +
+      cur.penalties.map((p) => "<tr><td>" + (p.week || "–") + "</td><td class='l'>" + ownerLink(p.slug, p.nick) + "</td><td>" + usd(p.amount) + "</td><td class='l muted'>" + esc(p.note) + "</td></tr>").join("") + "</tbody></table></div></section>" : "";
+    $("#body").innerHTML = pills + cards +
+      '<section><h2 class="sec-title">Weekly payouts <small>filled in from the scores</small></h2><div class="card table-wrap"><table>' + head + "<tbody>" + itemRows(cur.schedule) + "</tbody></table></div></section>" +
+      '<section><h2 class="sec-title">Season-end payouts</h2><div class="card table-wrap"><table>' + head + "<tbody>" + itemRows(cur.seasonEnd) + "</tbody></table></div>" +
+      (cur.feeNote ? '<p class="note">' + esc(cur.feeNote) + "</p>" : "") + "</section>" + board + low + pen +
+      '<p class="note">Rules for every payout are on the <a href="rules.html">rules page</a>; what each owner owes and is owed is on the <a href="money.html?y=' + cur.year + '">money page</a>. Ties split the prize.</p>';
+    $$("#pills .pill").forEach((b) => b.addEventListener("click", () => { cur = P.seasons.find((s) => String(s.year) === b.dataset.y); history.replaceState(null, "", "?y=" + cur.year); draw(); }));
+  }
+  draw();
+});
+</script>
+</body>
+</html>

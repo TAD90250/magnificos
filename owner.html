@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owner</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="owner-nav" id="onav"></div>
+    <div class="pills" id="pills" role="group" aria-label="Which games count"></div>
+    <p class="note" id="scopeNote"></p>
+    <div id="body"><div class="loading">Loading&hellip;</div></div>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("owners.html", "Owner", async (meta) => {
+  const { $, $$, esc, getJSON, rec, pct, num, ownerLink, RESULT_BADGE } = L;
+  const slug = new URLSearchParams(location.search).get("o") || meta.owners[0].slug;
+  const o = await getJSON("data/owner/" + encodeURIComponent(slug) + ".json");
+  let key = L.pickScope(o.scopes, o.defaultScope);
+  function draw() {
+  const sc = o.scopes.find((x) => x.key === key);
+  $("#onav").innerHTML = meta.owners.map((x) =>
+    '<a href="owner.html?o=' + encodeURIComponent(x.slug) + "&scope=" + key + '"' + (x.slug === slug ? ' class="on"' : "") + ">" + esc(x.nick) + "</a>").join("");
+  L.scopePills($("#pills"), o.scopes, key, (k) => { key = k; history.replaceState(null, "", "?o=" + encodeURIComponent(slug) + "&scope=" + k); draw(); });
+  $("#scopeNote").textContent = L.SCOPE_NOTES[key];
+  const c = sc.career;
+  document.title = o.nick + " · " + meta.leagueName;
+  $("#pageTitle").textContent = o.nick + (o.full ? " — " + o.full : "");
+  $("#pageSub").textContent = (c.firstYear === c.lastYear ? c.firstYear : c.firstYear + "–" + c.lastYear) +
+    " · " + c.seasons + (c.seasons === 1 ? " season" : " seasons") +
+    (c.titleYears.length ? " · 🏆 " + c.titleYears.join(", ") : "");
+
+  const tile = (k, v, gold) => '<div class="card tile' + (gold ? " gold" : "") + '"><span>' + k + "</span><b>" + v + "</b></div>";
+  const rc = (k, g, big) => g
+    ? '<div class="card rec-card"><div class="k">' + k + '</div><div class="v">' + big + '</div><div class="d">' + g.year + " week " + g.week +
+      " vs " + ownerLink(g.oppSlug, g.opp) + " (" + num(g.score, 2) + "&ndash;" + num(g.oppScore, 2) + ")" +
+      (g.type !== "Regular" ? " · " + esc(g.type.replace("Playoff - ", "Playoff ")) : "") + "</div></div>" : "";
+  const R = sc.records || {};
+
+  // season table
+  const S = sc.seasons;
+  const tot = S.reduce((a, s) => ({ w: a.w + s.w, l: a.l + s.l, t: a.t + s.t, pf: a.pf + (s.pf || 0), pa: a.pa + (s.pa || 0) }), { w: 0, l: 0, t: 0, pf: 0, pa: 0 });
+  const seasonRows = S.map((s) => "<tr" + (s.champion ? " class='champ'" : "") + "><td class='l'><a href='standings.html?y=" + s.year + "'>" + s.year + "</a></td>" +
+    "<td class='l'>" + esc(s.team) + "</td><td>" + (s.games ? rec(s.w, s.l, s.t) : "–") + "</td><td>" + (s.games ? num(s.pf) : "–") + "</td><td>" + (s.games ? num(s.pa) : "–") + "</td>" +
+    "<td>" + (s.finish ? L.ordinal(s.finish) : "–") + "</td><td class='l'>" + RESULT_BADGE(s.result) + "</td>" +
+    "<td class='l'>" + (s.draftR1 ? esc(s.draftR1.player) + " <span class='muted'>(#" + s.draftR1.pick + ")</span>" : "<span class='muted'>–</span>") + "</td></tr>").join("");
+
+  // h2h
+  const h2hRows = sc.h2h.map((h) => "<tr><td class='l'>" + ownerLink(h.slug, h.nick) + "</td><td data-v='" + h.games + "'>" + h.games + "</td>" +
+    "<td data-v='" + h.w + "'>" + rec(h.w, h.l, h.t) + "</td><td class='l' data-v='" + (h.pct || 0) + "'><span class='bar' style='width:" + Math.round((h.pct || 0) * 60) + "px'></span>" + pct(h.pct) + "</td>" +
+    "<td>" + num(h.pf) + "</td><td>" + num(h.pa) + "</td><td>" + (h.playoff[0] + h.playoff[1] + h.playoff[2] ? rec(h.playoff[0], h.playoff[1], h.playoff[2]) : "–") + "</td></tr>").join("");
+
+  // top players
+  const T = sc.topAll || {};
+  const block = (title, list, first, sub, item) => !list || !list.length ? "" :
+    '<div class="card top-block"><h3>' + title + '</h3><div class="first">' + esc(list[0].name) + " <small>" + esc(list[0].pos) + " · " + first(list[0]) + "</small></div>" +
+    '<div class="note">' + sub(list[0]) + "</div>" +
+    (list.length > 1 ? "<ol start='2'>" + list.slice(1).map((p) => "<li><b>" + esc(p.name) + "</b> — " + item(p) + "</li>").join("") + "</ol>" : "") + "</div>";
+  const yrs = (p) => p.years[0] === p.years[1] ? p.years[0] : p.years[0] + "–" + p.years[1];
+  const tops =
+    block("Most-started player", T.mostStarted, (p) => p.starts + " starts", (p) => yrs(p) + " · " + num(p.pts) + " pts as a starter", (p) => p.starts + " starts") +
+    block("Most games on roster", T.mostRoster, (p) => p.games + " games", (p) => yrs(p) + " · started " + p.starts + " of them", (p) => p.games + " games") +
+    block("Most points (as starter)", T.mostPoints, (p) => num(p.pts) + " pts", (p) => yrs(p) + " · " + p.starts + " starts", (p) => num(p.pts) + " pts") +
+    block("Best single game", T.bestGames, (p) => num(p.pts) + " pts", (p) => p.year + " week " + p.week + (p.opp ? " vs " + esc(p.opp) : ""), (p) => num(p.pts) + " pts · " + p.year + " wk " + p.week);
+
+  const byYear = (sc.topByYear || []).map((y) => "<tr><td class='l'><b>" + y.year + "</b></td>" +
+    "<td class='l'>" + esc(y.mostStarted.name) + " <span class='muted'>" + esc(y.mostStarted.pos) + " · " + y.mostStarted.starts + " starts</span></td>" +
+    "<td class='l'>" + (y.mostPoints ? esc(y.mostPoints.name) + " <span class='muted'>" + esc(y.mostPoints.pos) + " · " + num(y.mostPoints.pts) + " pts</span>" : "–") + "</td>" +
+    "<td class='l'>" + (y.bestGame ? esc(y.bestGame.name) + " <span class='muted'>" + num(y.bestGame.pts) + " pts · wk " + y.bestGame.week + (y.bestGame.opp ? " vs " + esc(y.bestGame.opp) : "") + "</span>" : "–") + "</td></tr>").join("");
+
+  $("#body").innerHTML =
+    '<section><div class="grid g6">' +
+      tile("Titles", c.titles, c.titles > 0) + tile("Record", rec(c.all[0], c.all[1], c.all[2])) +
+      tile("Games", c.games) + tile("Win %", pct(c.allPct)) + tile("Playoffs", c.playoffApps + "/" + c.seasons) +
+      tile("Best finish", c.bestFinish ? L.ordinal(c.bestFinish) : "–") + "</div>" +
+    '<p class="note" style="margin-top:8px">' + (c.reg[0] + c.reg[1] + c.reg[2] ? "Regular season " + rec(c.reg[0], c.reg[1], c.reg[2]) + " (" + pct(c.regPct) + ") · " : "") +
+      (c.playoff[0] + c.playoff[1] + c.playoff[2] ? "playoffs " + rec(c.playoff[0], c.playoff[1], c.playoff[2]) + " · " : "") +
+      "" + num(c.pf, 0) + " points for, " + num(c.pa, 0) + " against · " + num(c.avgPf) + " per game · " + c.runnerUps + " runner-up finish" + (c.runnerUps === 1 ? "" : "es") + "</p></section>" +
+
+    '<section><h2 class="sec-title">Season by season <small>record &amp; points in the selected games</small></h2><div class="card table-wrap"><table id="seasons">' +
+      "<thead><tr><th class='l'>Year</th><th class='l'>Team</th><th>W-L-T</th><th>PF</th><th>PA</th><th>Finish</th><th class='l'>Result</th><th class='l'>Round 1 pick</th></tr></thead><tbody>" + seasonRows + "</tbody>" +
+      "<tfoot><tr><td class='l'>Total</td><td></td><td>" + rec(tot.w, tot.l, tot.t) + "</td><td>" + num(tot.pf) + "</td><td>" + num(tot.pa) + "</td><td></td><td></td><td></td></tr></tfoot></table></div>" +
+      (S.some((s) => !s.draftR1) ? '<p class="note">Round-1 picks show a dash where the draft is not on record.</p>' : "") + "</section>" +
+
+    '<section><h2 class="sec-title">Personal records <small>selected games</small></h2><div class="grid g4">' +
+      rc("Highest score", R.highest, R.highest ? num(R.highest.score, 2) : "") + rc("Lowest score", R.lowest, R.lowest ? num(R.lowest.score, 2) : "") +
+      rc("Biggest win", R.biggestWin, R.biggestWin ? "+" + num(R.biggestWin.score - R.biggestWin.oppScore, 2) : "") +
+      rc("Biggest loss", R.biggestLoss, R.biggestLoss ? num(R.biggestLoss.score - R.biggestLoss.oppScore, 2) : "") + "</div></section>" +
+
+    '<section><h2 class="sec-title">Top players — all time <small>points count only while started' + (o.excludesKickersDefenses ? "; kickers &amp; defenses excluded" : "; includes kickers &amp; defenses") + "</small></h2>" +
+      '<div class="grid g2">' + tops + "</div></section>" +
+
+    '<section><h2 class="sec-title">Top players — by year</h2><div class="card table-wrap"><table>' +
+      "<thead><tr><th class='l'>Year</th><th class='l'>Most started</th><th class='l'>Most points</th><th class='l'>Best single game</th></tr></thead><tbody>" + byYear + "</tbody></table></div></section>" +
+
+    '<section><h2 class="sec-title">Head-to-head <small>selected games</small></h2><div class="card table-wrap"><table id="h2h">' +
+      "<thead><tr><th class='l' data-sort>Opponent</th><th data-sort>Games</th><th data-sort>Record</th><th class='l' data-sort>Win %</th><th data-sort>PF</th><th data-sort>PA</th><th>Playoffs</th></tr></thead><tbody>" + h2hRows + "</tbody></table></div></section>";
+  L.sortable($("#h2h"));
+  }
+  draw();
+});
+</script>
+</body>
+</html>

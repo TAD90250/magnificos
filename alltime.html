@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All-time stats</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="pills" id="pills" role="group" aria-label="Which games count"></div>
+    <p class="note" id="scopeNote"></p>
+    <div class="grid g2" id="tables"></div>
+    <p class="note">The percentage and per-game tables only rank owners with at least 14 games (one full regular season; 4 for playoffs only); others are listed below the line. Rooney and Callito have one partial season so far, so totals favor owners who have played longer. Points are not adjusted for the switch from Yahoo to Sleeper scoring in 2025, or for season length (14 to 17 games).</p>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("alltime.html", "All-time stats", async (meta) => {
+  const { $, $$, esc, getJSON, rec, pct, num, ownerLink } = L;
+  const A = await getJSON("data/alltime.json");
+  $("#pageSub").textContent = "Every owner ranked, " + meta.firstYear + "–" + meta.currentSeason;
+  const NOTES = {
+    reg: "Showing regular-season games only.",
+    regpo: "Showing regular-season and playoff games. The 3rd-place game and consolation games are not counted, the same as the record book.",
+    po: "Showing playoff games only (quarterfinals, semifinals and championship; the 3rd-place game is not counted). Rate tables rank owners with at least 4 playoff games.",
+    all: "Showing every game, including consolation-bracket games."
+  };
+  const q = new URLSearchParams(location.search).get("scope");
+  let scope = A.scopes.find((s) => s.key === q) || A.scopes.find((s) => s.key === "regpo") || A.scopes[0];
+  const flipped = {};
+
+  const TABLES = [
+    { id: "w", title: "Total wins", vl: "W", val: (o) => o.w, fmt: (v) => v, extraL: "Record", extra: (o) => rec(o.w, o.l, o.t) },
+    { id: "l", title: "Total losses", vl: "L", val: (o) => o.l, fmt: (v) => v, extraL: "Record", extra: (o) => rec(o.w, o.l, o.t) },
+    { id: "pct", rate: true, title: "Overall win percentage", vl: "Win %", val: (o) => o.pct || 0, fmt: (v) => pct(v), extraL: "Record", extra: (o) => rec(o.w, o.l, o.t) },
+    { id: "pf", title: "Total points for", vl: "Points", val: (o) => o.pf, fmt: (v) => num(v, 1), extraL: "Games", extra: (o) => o.games },
+    { id: "apf", rate: true, title: "Points for per game", vl: "Avg", val: (o) => o.avgPf, fmt: (v) => num(v, 1), extraL: "Games", extra: (o) => o.games },
+    { id: "pa", title: "Total points against", vl: "Points", val: (o) => o.pa, fmt: (v) => num(v, 1), extraL: "Games", extra: (o) => o.games },
+    { id: "apa", rate: true, title: "Points against per game", vl: "Avg", val: (o) => o.avgPa, fmt: (v) => num(v, 1), extraL: "Games", extra: (o) => o.games }
+  ];
+
+
+  function tableHtml(t) {
+    const desc = !flipped[t.id];
+    const cmp = (a, b) => desc ? t.val(b) - t.val(a) : t.val(a) - t.val(b);
+    const ranked = scope.owners.filter((o) => !t.rate || o.games >= scope.minGames).sort(cmp);
+    const rest = scope.owners.filter((o) => t.rate && o.games < scope.minGames).sort(cmp);
+    const row = (o, rank) => "<tr" + (rank === 1 ? " class='champ'" : rank === "\u2013" ? " style='opacity:.6'" : "") + "><td class='rank'>" + rank + "</td><td class='l'><b>" + ownerLink(o.slug, o.nick) +
+      "</b>" + (o.seasons === 1 ? " <span class='muted' style='font-size:.78rem'>1 yr</span>" : "") + "</td><td><b>" + t.fmt(t.val(o)) + "</b></td><td class='muted'>" + t.extra(o) + "</td></tr>";
+    let rank = 0, prev = null;
+    let body = ranked.map((o, i) => {
+      const v = Math.round(t.val(o) * 10000) / 10000;
+      if (prev === null || v !== prev) rank = i + 1;
+      prev = v;
+      return row(o, rank);
+    }).join("");
+    if (rest.length) body += "<tr><td colspan='4' class='l muted' style='font-size:.78rem;background:var(--accent-soft)'>Fewer than " + scope.minGames + " games \u2014 not ranked</td></tr>" + rest.map((o) => row(o, "\u2013")).join("");
+    return '<div class="card" id="t-' + t.id + '"><div class="pad" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-bottom:8px">' +
+      '<h2 class="sec-title" style="margin:0">' + t.title + '</h2><button class="pill flip" data-id="' + t.id + '" style="font-size:.78rem;padding:3px 10px" title="Reverse the order">' +
+      (desc ? "Most first \u21C5" : "Fewest first \u21C5") + "</button></div>" +
+      '<div class="table-wrap"><table><thead><tr><th>#</th><th class="l">Owner</th><th>' + t.vl + "</th><th>" + t.extraL + "</th></tr></thead><tbody>" + body + "</tbody></table></div></div>";
+  }
+
+  function draw() {
+    $("#pills").innerHTML = A.scopes.map((s) => '<button class="pill' + (s.key === scope.key ? " on" : "") + '" data-k="' + s.key + '">' + esc(s.label) + "</button>").join("");
+    $$("#pills .pill").forEach((b) => b.addEventListener("click", () => {
+      scope = A.scopes.find((s) => s.key === b.dataset.k);
+      history.replaceState(null, "", "?scope=" + scope.key);
+      draw();
+    }));
+    $("#scopeNote").textContent = NOTES[scope.key] || "";
+    $("#tables").innerHTML = TABLES.map(tableHtml).join("");
+    $$(".flip").forEach((b) => b.addEventListener("click", () => { flipped[b.dataset.id] = !flipped[b.dataset.id]; draw(); }));
+  }
+  draw();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draft history</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="pills" id="pills"></div>
+    <div class="row" style="margin-bottom:12px"><label for="who" class="note">Show picks by</label>
+      <select id="who"><option value="">Everyone</option></select>
+      <label for="rnd" class="note">Round</label>
+      <select id="rnd"><option value="">All</option></select></div>
+    <div id="warn"></div>
+    <div class="card table-wrap"><table id="tbl"></table></div>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("draft.html", "Draft history", async (meta) => {
+  const { $, $$, esc, getJSON, ownerLink } = L;
+  const D = await getJSON("data/draft.json");
+  $("#pageSub").textContent = "Every pick on record";
+  const want = parseInt(new URLSearchParams(location.search).get("y"), 10);
+  let cur = D.find((d) => d.year === want) || D[0];
+  $("#pills").innerHTML = D.map((d) => '<button class="pill" data-y="' + d.year + '">' + d.year + "</button>").join("");
+  $$("#pills .pill").forEach((b) => b.addEventListener("click", () => { cur = D.find((d) => d.year === +b.dataset.y); $("#who").value = ""; $("#rnd").value = ""; history.replaceState(null, "", "?y=" + cur.year); setup(); draw(); }));
+  function setup() {
+    const names = Array.from(new Map(cur.picks.map((p) => [p.slug, p.owner])).entries()).sort((a, b) => a[1].localeCompare(b[1]));
+    $("#who").innerHTML = '<option value="">Everyone</option>' + names.map(([s, n]) => '<option value="' + s + '">' + esc(n) + "</option>").join("");
+    $("#rnd").innerHTML = '<option value="">All</option>' + Array.from({ length: cur.rounds }, (_, i) => '<option value="' + (i + 1) + '">' + (i + 1) + "</option>").join("");
+  }
+  function draw() {
+    $$("#pills .pill").forEach((b) => b.classList.toggle("on", +b.dataset.y === cur.year));
+    $("#warn").innerHTML = cur.complete ? "" : '<div class="warn">Partial draft: ' + cur.count + " of " + cur.expected + " picks are on record for " + cur.year + ".</div>";
+    const who = $("#who").value, rnd = $("#rnd").value;
+    const rows = cur.picks.filter((p) => (!who || p.slug === who) && (!rnd || p.round === +rnd));
+    $("#tbl").innerHTML = "<thead><tr><th>Rd</th><th>Pick</th><th class='l'>Owner</th><th class='l'>Team</th><th class='l'>Player</th></tr></thead><tbody>" +
+      (rows.length ? rows.map((p) => "<tr><td class='rank'>" + p.round + "</td><td>" + p.pick + "</td><td class='l'>" + ownerLink(p.slug, p.owner) + "</td><td class='l muted'>" + esc(p.team) + "</td><td class='l'><b>" + esc(p.player) + "</b></td></tr>").join("")
+        : "<tr><td colspan='5' class='l muted'>No picks match.</td></tr>") + "</tbody>";
+  }
+  $("#who").addEventListener("change", draw); $("#rnd").addEventListener("change", draw);
+  setup(); draw();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owners</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="pills" id="pills" role="group" aria-label="Which games count"></div>
+    <p class="note" id="scopeNote"></p>
+    <p class="note">Owners are sorted by titles, then win % in the selected games. Click a column to sort, or a name for the full profile. <a href="alltime.html">See the all-time stat tables &rarr;</a></p>
+    <div class="card table-wrap"><table id="tbl"></table></div>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("owners.html", "Owners", async (meta) => {
+  const { $, esc, getJSON, rec, pct, num, ownerLink } = L;
+  const O = await getJSON("data/owners.json");
+  let key = L.pickScope(O.scopes, O.defaultScope);
+  function draw() {
+    const sc = O.scopes.find((s) => s.key === key), owners = sc.owners;
+    L.scopePills($("#pills"), O.scopes, key, (k) => { key = k; history.replaceState(null, "", "?scope=" + k); draw(); });
+    $("#scopeNote").textContent = L.SCOPE_NOTES[key];
+    $("#pageSub").textContent = owners.length + " owners · " + meta.champions.length + " champions · sorted by titles, then win %";
+    $("#tbl").innerHTML = "<thead><tr><th data-sort>#</th><th class='l' data-sort>Owner</th><th data-sort>Titles</th><th data-sort>Runner-up</th><th data-sort>Playoffs</th>" +
+      "<th data-sort>Seasons</th><th data-sort>Games</th><th data-sort>Record</th><th data-sort>Win %</th><th data-sort>Avg PF</th><th class='l'>Years</th></tr></thead><tbody>" +
+      owners.map((o, i) => "<tr><td class='rank' data-v='" + (i + 1) + "'>" + (i + 1) + "</td><td class='l'><b>" + ownerLink(o.slug, o.nick, key) + "</b></td>" +
+        "<td data-v='" + o.titles + "'>" + (o.titles ? "🏆".repeat(Math.min(o.titles, 4)) + (o.titles > 4 ? "+" : "") + " " + o.titles : "–") + "</td>" +
+        "<td>" + (o.runnerUps || "–") + "</td><td>" + o.playoffApps + "</td><td>" + o.seasons + "</td><td>" + o.games + "</td>" +
+        "<td data-v='" + o.w + "'>" + rec(o.w, o.l, o.t) + "</td><td data-v='" + (o.pct || 0) + "'>" + pct(o.pct) + "</td><td>" + num(o.avgPf) + "</td>" +
+        "<td class='l muted'>" + (o.firstYear === o.lastYear ? o.firstYear : o.firstYear + "–" + o.lastYear) + "</td></tr>").join("") + "</tbody>";
+    L.sortable($("#tbl"));
+  }
+  draw();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>League rules</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap" id="body"><div class="loading">Loading&hellip;</div></div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("rules.html", "League rules", async (meta) => {
+  const { $, esc, getJSON } = L;
+  const R = await getJSON("data/rules.json");
+  $("#pageSub").textContent = meta.leagueName + " · how the league works";
+  const slugify = (t, i) => "s" + i + "-" + t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const blocks = (bl) => bl.map((b) => b.t === "ul" ? "<ul class='rules-list'>" + b.items.map((i) => "<li>" + esc(i) + "</li>").join("") + "</ul>"
+    : b.t === "h" ? "<h3 class='sub-title' style='margin-top:14px'>" + esc(b.text) + "</h3>" : "<p>" + esc(b.text) + "</p>").join("");
+  const secs = R.sections.map((s, i) => ({ ...s, id: slugify(s.title || "rules", i) }));
+  $("#body").innerHTML =
+    (R.placeholder ? '<div class="callout">These are placeholder rules. Paste the real rules into <code>league_rules.md</code>, run <code>export_site_data.py</code> and upload the <code>data</code> folder.</div>' : "") +
+    (secs.length > 2 ? '<div class="owner-nav" style="flex-wrap:wrap">' + secs.filter((s) => s.title).map((s) => '<a href="#' + s.id + '">' + esc(s.title) + "</a>").join("") + "</div>" : "") +
+    secs.map((s) => '<section id="' + s.id + '">' + (s.title ? '<h2 class="sec-title">' + esc(s.title) + "</h2>" : "") +
+      '<div class="card"><div class="pad rules">' + blocks(s.blocks) + "</div></div></section>").join("");
+});
+</script>
+</body>
+</html>

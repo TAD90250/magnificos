@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Head-to-head</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="pills" id="pills" role="group" aria-label="Which games count"></div>
+    <p class="note" id="scopeNote"></p>
+    <section>
+      <h2 class="sec-title">Compare two owners</h2>
+      <div class="row" style="margin-bottom:12px">
+        <select id="a" aria-label="First owner"></select> <b>vs</b> <select id="b" aria-label="Second owner"></select>
+      </div>
+      <div id="cmp"></div>
+    </section>
+    <section>
+      <h2 class="sec-title">Full matrix <small>row owner's record against the column owner (W-L-T, selected games)</small></h2>
+      <div class="card table-wrap"><table class="matrix" id="mx"></table></div>
+    </section>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("h2h.html", "Head-to-head", async (meta) => {
+  const { $, esc, getJSON, rec, pct, num } = L;
+  const H = await getJSON("data/h2h.json");
+  $("#pageSub").textContent = "Who owns who, all-time";
+  const order = H.order, nick = H.nicks;
+
+  let key = L.pickScope(H.scopes, H.defaultScope);
+  // matrix
+  const drawMatrix = () => {
+    const M = H.scopes.find((x) => x.key === key).matrix;
+    const cell = (r, c) => {
+      if (r === c) return "<td class='self'>–</td>";
+      const [w, l, t] = M[r][c];
+      if (!(w + l + t)) return "<td class='muted'>·</td>";
+      const p = (w + 0.5 * t) / (w + l + t);
+      const bg = p > 0.5 ? "rgba(29,122,70," + ((p - 0.5) * 0.9).toFixed(2) + ")" : p < 0.5 ? "rgba(179,55,47," + ((0.5 - p) * 0.9).toFixed(2) + ")" : "transparent";
+      return "<td style='background:" + bg + "' title='" + esc(nick[r]) + " vs " + esc(nick[c]) + ": " + rec(w, l, t) + "'>" + rec(w, l, t) + "</td>";
+    };
+    $("#mx").innerHTML = "<thead><tr><th>vs &rarr;</th>" + order.map((c) => "<th><a href='owner.html?o=" + c + "&scope=" + key + "'>" + esc(nick[c]) + "</a></th>").join("") + "</tr></thead><tbody>" +
+      order.map((r) => "<tr><td><a href='owner.html?o=" + r + "&scope=" + key + "'>" + esc(nick[r]) + "</a></td>" + order.map((c) => cell(r, c)).join("") + "</tr>").join("") + "</tbody>";
+  };
+
+  // comparator
+  const opts = order.map((s) => "<option value='" + s + "'>" + esc(nick[s]) + "</option>").join("");
+  $("#a").innerHTML = opts; $("#b").innerHTML = opts;
+  const q = new URLSearchParams(location.search);
+  $("#a").value = order.includes(q.get("a")) ? q.get("a") : order[0];
+  $("#b").value = order.includes(q.get("b")) ? q.get("b") : order[1];
+  async function compare() {
+    const a = $("#a").value, b = $("#b").value;
+    if (a === b) { $("#cmp").innerHTML = "<p class='note'>Pick two different owners.</p>"; return; }
+    const oa = await getJSON("data/owner/" + a + ".json");
+    const h = oa.scopes.find((x) => x.key === key).h2h.find((x) => x.slug === b);
+    if (!h) { $("#cmp").innerHTML = "<p class='note'>" + esc(nick[a]) + " and " + esc(nick[b]) + " never played each other in these games.</p>"; return; }
+    const lead = h.w > h.l ? nick[a] + " leads" : h.l > h.w ? nick[b] + " leads" : "All square";
+    const tile = (k, v) => "<div class='card tile'><span>" + k + "</span><b>" + v + "</b></div>";
+    $("#cmp").innerHTML = "<div class='grid g4'>" + tile(esc(nick[a]) + " record", rec(h.w, h.l, h.t)) + tile(esc(nick[b]) + " record", rec(h.l, h.w, h.t)) +
+      tile("Games played", h.games) + tile("Playoff meetings", h.playoff[0] + h.playoff[1] + h.playoff[2] ? esc(nick[a]) + " " + rec(h.playoff[0], h.playoff[1], h.playoff[2]) : "none") + "</div>" +
+      "<p class='note' style='margin-top:8px'><b>" + esc(lead) + "</b>" + (h.w === h.l ? "" : " · " + pct(h.w > h.l ? h.pct : 1 - h.pct) + " win rate") + " · average score " + esc(nick[a]) + " " + num(h.pf / h.games) + " vs " + esc(nick[b]) + " " + num(h.pa / h.games) + "</p>";
+    history.replaceState(null, "", "?a=" + a + "&b=" + b + "&scope=" + key);
+  }
+  $("#a").addEventListener("change", compare); $("#b").addEventListener("change", compare);
+  const refresh = () => {
+    L.scopePills($("#pills"), H.scopes, key, (k) => { key = k; refresh(); });
+    $("#scopeNote").textContent = L.SCOPE_NOTES[key];
+    drawMatrix();
+    compare();
+  };
+  refresh();
+});
+</script>
+</body>
+</html>
