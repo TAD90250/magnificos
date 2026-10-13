@@ -56,7 +56,7 @@ h1, h2, h3 { line-height: 1.2; margin: 0; letter-spacing: -.01em; }
 .brand:hover { text-decoration: none; }
 .brand span { color: #f1c24b; }
 .nav { display: flex; gap: 2px; flex-wrap: wrap; margin-left: auto; }
-.nav a { color: #cfdbea; padding: 14px 8px; font-size: .88rem; font-weight: 600; border-bottom: 3px solid transparent; }
+.nav a { color: #cfdbea; padding: 14px 6px; font-size: .86rem; font-weight: 600; border-bottom: 3px solid transparent; }
 .nav a:hover { color: #fff; text-decoration: none; }
 .nav a.on { color: #fff; border-bottom-color: #f1c24b; }
 @media (max-width: 720px) {

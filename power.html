@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Power Rankings</title>
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  .pr td.w { text-align: center; min-width: 34px; font-weight: 700; }
+  .pr td.w.top { background: rgba(29,122,70,.18); }
+  .pr td.w.bot { background: rgba(179,55,47,.16); }
+</style>
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="pills" id="pills" role="group" aria-label="Which weeks"></div>
+    <p class="note" id="how"></p>
+    <section id="board"></section>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("power.html", "Power Rankings", async (meta) => {
+  const { $, $$, esc, getJSON, num, ownerLink } = L;
+  const P = await getJSON("data/power.json");
+  $("#pageSub").textContent = P.year + " season · power rankings from Sleeper projections for the weeks still to play" + (P.asOf ? " · projections as of " + P.asOf : "");
+  let key = L.pickScope(P.blocks, P.blocks[0].key);
+  const noteFor = (B) => {
+    const W = B.weights || {};
+    const parts = [["lineup", "projected lineup"], ["bench", "bench depth"], ["record", "record and standings"], ["points", "points scored so far"]].filter(([k]) => W[k] > 0);
+    const head = parts.length === 1 ? "The power score is 100% projected lineup. "
+      : "Each team gets a 0-100 power score: " + parts.map(([k, n]) => n + " " + W[k] + "%").join(", ") + ". ";
+    return "Looks forward only. " + head +
+      "Projected lineup: for every week still to be played, each team\u2019s current roster is placed into the league\u2019s starting slots (QB, 2 RB, 2 WR, TE, 3 flex, K, DST) using Sleeper\u2019s projected points, and teams are ranked on that best lineup each week (1st = 100, last = 0, averaged). " +
+      (W.bench > 0 ? "Bench depth: the projected points of the best 4 non-starting QB/RB/WR/TE, ranked the same way. " : "") +
+      (W.record > 0 ? "Record and standings: win % and standings position this season. " : "") +
+      (W.points > 0 ? "Points scored: regular-season points so far. " : "") +
+      "Games already played are not projected. Updated every Thursday.";
+  };
+
+  function drawBoard() {
+    const B = P.blocks.find((b) => b.key === key);
+    L.scopePills($("#pills"), P.blocks, key, (k) => { key = k; history.replaceState(null, "", "?scope=" + k); drawBoard(); });
+    $("#how").textContent = noteFor(B);
+    const W = B.weights || {};
+    const parts = [W.lineup, W.bench, W.record, W.points].filter((v) => v > 0).length;
+    if (!B.weeksPlayed.length) {
+      $("#board").innerHTML = '<div class="card" style="padding:16px"><b>' + esc(B.label) + '</b><p class="note" style="margin:6px 0 0">No projections loaded for these weeks. This table fills in when the weekly projections are pulled.</p></div>';
+      return;
+    }
+    const n = B.teams.length;
+    const wkHead = B.weeksPlayed.map((w) => "<th>W" + w + "</th>").join("");
+    const rows = B.teams.map((t) => "<tr><td class='rank' data-v='" + t.rank + "'>" + t.rank + "</td><td class='l'><b>" + ownerLink(t.slug, t.nick) + "</b></td>" +
+      "<td data-v='" + t.score + "'><b>" + num(t.score) + "</b></td>" +
+      (W.lineup > 0 && parts > 1 ? "<td data-v='" + t.lineupScore + "'>" + num(t.lineupScore, 0) + "</td>" : "") + (W.bench > 0 ? "<td data-v='" + t.benchScore + "'>" + num(t.benchScore, 0) + "</td>" : "") +
+      (W.record > 0 ? "<td data-v='" + t.recordScore + "'>" + num(t.recordScore, 0) + "</td>" : "") + (W.points > 0 ? "<td data-v='" + t.pointsScore + "'>" + num(t.pointsScore, 0) + "</td>" : "") +
+      (W.record > 0 ? "<td data-v='" + t.wins + "'>" + L.rec(t.wins, t.losses, t.ties) + "</td><td data-v='" + (t.standing || 99) + "'>" + (t.standing ? L.ordinal(t.standing) : "–") + "</td>" : "") + "<td data-v='" + t.proj + "'>" + num(t.proj, 0) + "</td>" +
+      B.weeksPlayed.map((w) => { const r = t.ranks[String(w)]; return "<td class='w" + (r <= 3 ? " top" : r > n - 3 ? " bot" : "") + "'>" + (r == null ? "–" : r) + "</td>"; }).join("") + "</tr>").join("");
+    $("#board").innerHTML = '<h2 class="sec-title">' + esc(B.label) + " <small>weeks " + B.weeksPlayed[0] + (B.weeksPlayed.length > 1 ? "–" + B.weeksPlayed[B.weeksPlayed.length - 1] : "") + " projected</small></h2>" +
+      '<div class="card table-wrap"><table class="pr" id="prt"><thead><tr><th data-sort>#</th><th class="l" data-sort>Owner</th><th data-sort>Score</th>' + (W.lineup > 0 && parts > 1 ? '<th data-sort title="Projected best lineup (0-100)">Lineup</th>' : "") + (W.bench > 0 ? '<th data-sort title="Bench depth (0-100)">Bench</th>' : "") + (W.record > 0 ? '<th data-sort title="Record and standings (0-100)">Record</th>' : "") + (W.points > 0 ? '<th data-sort title="Points scored so far (0-100)">Pts</th>' : "") + (W.record > 0 ? "<th data-sort>W-L</th><th data-sort>Stand.</th>" : "") + '<th data-sort>Proj. total</th>' + wkHead + "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      '<p class="note">Weekly cells show that week\'s rank (green = top 3, red = bottom 3). ' + (parts > 1 ? 'Lineup, Bench, Record and Pts are 0-100 scores (1st = 100, last = 0). ' : '') + 'Proj. total is the sum of each week\'s projected best lineup.</p>';
+    L.sortable($("#prt"));
+  }
+
+  drawBoard();
+});
+</script>
+</body>
+</html>

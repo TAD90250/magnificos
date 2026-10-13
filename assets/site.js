@@ -6,7 +6,7 @@
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   const NAV = [["index.html", "Home"], ["standings.html", "Standings"], ["owners.html", "Owners"], ["alltime.html", "All-Time"],
-    ["records.html", "Records"], ["h2h.html", "Head-to-Head"], ["draft.html", "Draft"],
+    ["records.html", "Records"], ["power.html", "Power"], ["h2h.html", "Head-to-Head"], ["draft.html", "Draft"],
     ["payouts.html", "Payouts"], ["money.html", "Money"], ["rules.html", "Rules"], ["photos.html", "Photos 🔒"]];
 
   async function getJSON(path) {

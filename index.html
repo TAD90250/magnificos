@@ -117,7 +117,7 @@ L.boot("index.html", null, async (meta) => {
 
   const links = [["standings.html", "Standings", "Every season, final tables"], ["owners.html", "Owners", "All-time leaderboard & profiles"],
     ["alltime.html", "All-time stats", "Wins, losses, win % and points, ranked"],
-    ["records.html", "Record book", "Highest scores, blowouts, best seasons"], ["h2h.html", "Head-to-head", "Who owns who"],
+    ["records.html", "Record book", "Highest scores, blowouts, best seasons"], ["power.html", "Power rankings", "Best possible lineup, ranked weekly"], ["h2h.html", "Head-to-head", "Who owns who"],
     ["payouts.html", "Payouts", "Weekly and season-end prizes, and winners"], ["money.html", "Money due", "Who owes, who is owed"], ["rules.html", "League rules", "How the league works"],
     ["draft.html", "Draft history", "Every pick we have on record"], ["photos.html", "Photo vault 🔒", "Password required"]];
   $("#links").innerHTML = links.map(([h, t, d]) => '<a class="card linkcard" href="' + h + '"><b>' + t + "</b><span>" + d + "</span></a>").join("");
