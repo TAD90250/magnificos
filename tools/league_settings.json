@@ -1,0 +1,23 @@
+{
+  "_help": "League money settings. confirmed: true hides the 'placeholder' notice. seasonPayouts are the end-of-season prizes. weeklyPayouts is the schedule of weekly prizes (kind says how the winner is found; manual ones are entered in manualWinners). lowestPenalty/lowestCount: the lowest N scorers of each regular-season week pay that amount. fees: each owner's base fee and how much they have paid in so far (Total = base + penalties; Owe = Total - paid; a negative Owe means they overpaid). lowestOverrides: use this list instead of the computed lowest scorers for a week. penalties: extra fees, e.g. a hurt or bye-week player left in the lineup (amount is what the owner pays). payments: prize money the league has already paid out to an owner (amount > 0). toiletBowlWinner: e.g. {\"2026\": \"chaps\"} once it is decided.",
+  "confirmed": false,
+  "moneyStartYear": 2026,
+  "seasonPayouts": {
+    "first": 0,
+    "second": 0,
+    "third": 0,
+    "regSeasonFirst": 0,
+    "mostPoints": 0
+  },
+  "lowestPenalty": 0,
+  "lowestCount": 0,
+  "missPlayoffsPenalty": 0,
+  "feeNote": "",
+  "weeklyPayouts": [],
+  "manualWinners": [],
+  "lowestOverrides": [],
+  "penalties": [],
+  "fees": [],
+  "toiletBowlWinner": {},
+  "payments": []
+}
