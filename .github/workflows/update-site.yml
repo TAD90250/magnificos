@@ -1,0 +1,70 @@
+# Updates the FFL Magnificos site twice a week, with no computer of yours involved.
+#   Tuesday 1 am Pacific: after Monday night football, pulls the final scores
+#   Thursday : before the new week starts, refreshes scores and Power Rankings projections
+# You can also run it by hand: Actions tab > "Update site data" > Run workflow.
+name: Update site data
+
+on:
+  schedule:
+    - cron: "0 8 * * 2"     # Tuesday 08:00 UTC  (1 am Pacific in summer, 12 am in winter)
+    - cron: "0 14 * * 4"    # Thursday 14:00 UTC (7 am Pacific in summer, 6 am in winter)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: update-site
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Get the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages
+        run: pip install -r tools/requirements.txt
+
+      - name: Pull the latest Sleeper scores into the workbook
+        working-directory: tools
+        run: python sleeper_backfill.py weekly
+
+      - name: Pull projections for the Power Rankings
+        working-directory: tools
+        continue-on-error: true      # if Sleeper projections fail, the rest of the site still updates
+        run: python fetch_projections.py
+
+      - name: Rebuild the site data
+        working-directory: tools
+        run: python export_site_data.py --out ../data
+
+      - name: Remove workbook backup copies
+        run: rm -f tools/*_backup_*.xlsx
+
+      - name: Save the changes
+        run: |
+          git config user.name "league-update-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+          else
+            git commit -m "Update league data"
+            git pull --rebase
+            git push
+          fi
+
+      - name: Ask GitHub Pages to publish
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds"
