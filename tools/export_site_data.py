@@ -901,10 +901,33 @@ def build(workbook, out_dir):
     h2h_scopes = []
     for skey, slabel, sfn in scope_defs:
         m = {slug[o]: {slug[p]: [0, 0, 0] for p in order if p != o} for o in order}
-        for r in rows:
+        seq = defaultdict(list)                  # (owner, opponent) -> results in date order
+        for r in sorted(rows, key=lambda r: (r["y"], r["w"])):
             if sfn(r["t"]) and r["o"] in slug and r["p"] in slug and r["o"] != r["p"] and r["o"] in order and r["p"] in order:
                 m[slug[r["o"]]][slug[r["p"]]]["WLT".index(r["r"])] += 1
-        h2h_scopes.append({"key": skey, "label": slabel, "matrix": m})
+                seq[(slug[r["o"]], slug[r["p"]])].append((r["r"], r["y"], r["w"]))
+        # streaks: signed current run (+n = owner has won the last n meetings, -n = lost the last n; a tie ends a run),
+        # and the longest winning run the owner has had against that opponent
+        cur = {a: {} for a in m}
+        best = {a: {} for a in m}
+        for (a, b), res in seq.items():
+            n, last = 0, None
+            for x in reversed(res):
+                if last is None:
+                    if x[0] == "T":
+                        break
+                    last = x[0]
+                if x[0] == last:
+                    n += 1
+                else:
+                    break
+            cur[a][b] = n if last == "W" else -n if last == "L" else 0
+            run = top = 0
+            for x in res:
+                run = run + 1 if x[0] == "W" else 0
+                top = max(top, run)
+            best[a][b] = top
+        h2h_scopes.append({"key": skey, "label": slabel, "matrix": m, "streak": cur, "best": best})
     write_json(os.path.join(out_dir, "h2h.json"),
                {"order": [slug[o] for o in order], "nicks": {slug[o]: nick(o) for o in order},
                 "defaultScope": DEFAULT_RECORDS_SCOPE, "scopes": h2h_scopes})
@@ -1001,6 +1024,53 @@ def build(workbook, out_dir):
             proj = None
     else:
         print(f"   No {PROJECTIONS_FILE} yet -- run fetch_projections.py to fill in the Power Rankings page.")
+    # ============ this week's matchups (home page) ============
+    tw = (proj or {}).get("matchups") if proj else None
+    tw_path = os.path.join(out_dir, "thisweek.json")
+    if tw and tw.get("pairs"):
+        wk_now, yr_now = int(tw["week"]), latest_year
+        def _own(oid_):
+            t_ = team_rows.get(f"{yr_now}-{oid_}")
+            return t_["owner"] if t_ and t_["owner"] in slug else None
+        pairs_ = [(_own(a_), _own(b_)) for a_, b_ in tw["pairs"]]
+        pairs_ = [(a_, b_) for a_, b_ in pairs_ if a_ and b_]
+        tw_scopes = []
+        for skey, slabel, sfn in scope_defs:
+            ms = []
+            for a_, b_ in pairs_:
+                res = sorted(((r["y"], r["w"], r) for r in rows
+                              if r["o"] == a_ and r["p"] == b_ and sfn(r["t"]) and (r["y"], r["w"]) < (yr_now, wk_now)),
+                             key=lambda x: (x[0], x[1]))
+                w_, l_, t_ = (sum(1 for x in res if x[2]["r"] == c) for c in "WLT")
+                n, last_res = 0, None
+                for x in reversed(res):
+                    if last_res is None:
+                        if x[2]["r"] == "T":
+                            break
+                        last_res = x[2]["r"]
+                    if x[2]["r"] == last_res:
+                        n += 1
+                    else:
+                        break
+                streak = n if last_res == "W" else -n if last_res == "L" else 0
+                def _longest(who):
+                    run = top = 0
+                    for x in res:
+                        mine = x[2]["r"] == "W" if who == "a" else x[2]["r"] == "L"
+                        run = run + 1 if mine else 0
+                        top = max(top, run)
+                    return top
+                lastg = None
+                if res:
+                    y_, wk_, r_ = res[-1]
+                    lastg = {"year": y_, "week": wk_, "a": rnd(r_["pf"]), "b": rnd(r_["pa"]), "type": r_["t"]}
+                ms.append({"a": {"slug": slug[a_], "nick": nick(a_)}, "b": {"slug": slug[b_], "nick": nick(b_)},
+                           "rec": [w_, l_, t_], "streak": streak, "bestA": _longest("a"), "bestB": _longest("b"), "last": lastg})
+            tw_scopes.append({"key": skey, "label": slabel, "matchups": ms})
+        write_json(tw_path, {"season": yr_now, "week": wk_now, "asOf": proj.get("fetchedAt"),
+                             "defaultScope": DEFAULT_RECORDS_SCOPE, "scopes": tw_scopes})
+    elif os.path.exists(tw_path):
+        os.remove(tw_path)                              # stale file from an earlier week: the home page hides the section
     pr_lineup, pr_bench = {}, {}                       # week -> {tsid: projected points}
     ts_of = {}
     if proj:

@@ -69,6 +69,7 @@ def main():
     # ---- current rosters, tied to the same owner ids the workbook uses ----
     owner_map = load_owner_map()
     teams = {}
+    roster_owner = {}                                            # Sleeper roster_id -> owner id (for this week's matchups)
     for ro in sleeper_client.get_rosters(SLEEPER_SEED_LEAGUE_ID):
         uid = ro.get("owner_id")
         info = owner_map.get("sleeper", {}).get(uid)
@@ -77,6 +78,7 @@ def main():
                   f"Run sleeper_backfill.py weekly first.")
             continue
         out_of_play = set(ro.get("reserve") or []) | set(ro.get("taxi") or [])     # IR / taxi cannot start
+        roster_owner[ro["roster_id"]] = info["owner_id"]
         teams[info["owner_id"]] = [p for p in (ro.get("players") or []) if p not in out_of_play]
     needed = {p for ps_ in teams.values() for p in ps_}
     print(f"   {len(teams)} rosters, {len(needed)} players")
@@ -105,11 +107,27 @@ def main():
 
     if not any(weeks.values()):
         sys.exit("No projections came back -- nothing written. Check your internet connection and try again.")
+    # ---- who plays whom this week (for the home page "This week's matchups") ----
+    matchups = None
+    try:
+        mrows = sleeper_client.get_matchups(SLEEPER_SEED_LEAGUE_ID, first_week)
+        by_id = {}
+        for m in mrows or []:
+            if m.get("matchup_id") is not None and m.get("roster_id") in roster_owner:
+                by_id.setdefault(m["matchup_id"], []).append(roster_owner[m["roster_id"]])
+        pairs = [v for _, v in sorted(by_id.items()) if len(v) == 2]
+        if pairs:
+            matchups = {"week": first_week, "pairs": pairs}
+            print(f"   week {first_week}: {len(pairs)} matchups")
+        else:
+            print(f"   week {first_week}: Sleeper has no matchups posted yet")
+    except Exception as e:                                       # noqa: BLE001
+        print(f"   could not read this week's matchups ({e}) -- the home page section will be skipped")
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump({"season": season, "fetchedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                    "field": field, "firstWeek": first_week, "lastWeek": last_week,
                    "rosterPositions": league.get("roster_positions") or [],
-                   "teams": teams, "players": players, "weeks": weeks}, f)
+                   "teams": teams, "players": players, "weeks": weeks, "matchups": matchups}, f)
     print(f"Saved {OUT}")
 
 
