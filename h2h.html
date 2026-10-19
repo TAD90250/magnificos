@@ -19,7 +19,11 @@
       <div id="cmp"></div>
     </section>
     <section>
-      <h2 class="sec-title">Full matrix <small>row owner's record against the column owner (W-L-T, selected games)</small></h2>
+      <h2 class="sec-title">Active streaks <small>longest current runs of wins over the same opponent (selected games)</small></h2>
+      <div class="card table-wrap"><table id="streaks"></table></div>
+    </section>
+    <section>
+      <h2 class="sec-title">Full matrix <small>row owner's record against the column owner (W-L-T, selected games). A small W3 or L3 under a record means the row owner has won or lost the last 3 or more meetings</small></h2>
       <div class="card table-wrap"><table class="matrix" id="mx"></table></div>
     </section>
   </div>
@@ -32,17 +36,34 @@ L.boot("h2h.html", "Head-to-head", async (meta) => {
   $("#pageSub").textContent = "Who owns who, all-time";
   const order = H.order, nick = H.nicks;
 
+  const STREAK_MIN = 3;
   let key = L.pickScope(H.scopes, H.defaultScope);
+  const runText = (a, b, n) => esc(nick[a]) + " has beaten " + esc(nick[b]) + " " + n + " straight";
+
+  // league-wide list of the longest active streaks
+  const drawStreaks = () => {
+    const SC = H.scopes.find((x) => x.key === key), S = SC.streak || {}, B = SC.best || {};
+    const list = [];
+    order.forEach((a) => Object.keys(S[a] || {}).forEach((b) => { if (S[a][b] >= 2) list.push([a, b, S[a][b], (SC.matrix[a][b] || [0, 0, 0])]); }));
+    list.sort((x, y) => y[2] - x[2] || nick[x[0]].localeCompare(nick[y[0]]));
+    const top = list.slice(0, 10);
+    $("#streaks").innerHTML = top.length
+      ? "<thead><tr><th>#</th><th class='l'>Streak</th><th>Now</th><th>Best ever</th><th>Series</th></tr></thead><tbody>" +
+        top.map((x, i) => "<tr><td>" + (i + 1) + "</td><td class='l'><a href='h2h.html?a=" + x[0] + "&b=" + x[1] + "&scope=" + key + "'>" + runText(x[0], x[1], x[2]) + "</a></td><td>W" + x[2] + "</td><td>" + (B[x[0]] ? "W" + B[x[0]][x[1]] : "") + "</td><td>" + rec(x[3][0], x[3][1], x[3][2]) + "</td></tr>").join("") + "</tbody>"
+      : "<tbody><tr><td class='note'>No one has won 2 in a row against the same opponent right now.</td></tr></tbody>";
+  };
   // matrix
   const drawMatrix = () => {
-    const M = H.scopes.find((x) => x.key === key).matrix;
+    const SC = H.scopes.find((x) => x.key === key), M = SC.matrix, S = SC.streak || {};
     const cell = (r, c) => {
       if (r === c) return "<td class='self'>–</td>";
       const [w, l, t] = M[r][c];
       if (!(w + l + t)) return "<td class='muted'>·</td>";
       const p = (w + 0.5 * t) / (w + l + t);
       const bg = p > 0.5 ? "rgba(29,122,70," + ((p - 0.5) * 0.9).toFixed(2) + ")" : p < 0.5 ? "rgba(179,55,47," + ((0.5 - p) * 0.9).toFixed(2) + ")" : "transparent";
-      return "<td style='background:" + bg + "' title='" + esc(nick[r]) + " vs " + esc(nick[c]) + ": " + rec(w, l, t) + "'>" + rec(w, l, t) + "</td>";
+      const sk = (S[r] && S[r][c]) || 0;
+      const tag = Math.abs(sk) >= STREAK_MIN ? "<br><small style='opacity:.85'>" + (sk > 0 ? "W" : "L") + Math.abs(sk) + "</small>" : "";
+      return "<td style='background:" + bg + "' title='" + esc(nick[r]) + " vs " + esc(nick[c]) + ": " + rec(w, l, t) + (sk ? " (" + (sk > 0 ? "won" : "lost") + " last " + Math.abs(sk) + ")" : "") + "'>" + rec(w, l, t) + tag + "</td>";
     };
     $("#mx").innerHTML = "<thead><tr><th>vs &rarr;</th>" + order.map((c) => "<th><a href='owner.html?o=" + c + "&scope=" + key + "'>" + esc(nick[c]) + "</a></th>").join("") + "</tr></thead><tbody>" +
       order.map((r) => "<tr><td><a href='owner.html?o=" + r + "&scope=" + key + "'>" + esc(nick[r]) + "</a></td>" + order.map((c) => cell(r, c)).join("") + "</tr>").join("") + "</tbody>";
@@ -60,10 +81,13 @@ L.boot("h2h.html", "Head-to-head", async (meta) => {
     const oa = await getJSON("data/owner/" + a + ".json");
     const h = oa.scopes.find((x) => x.key === key).h2h.find((x) => x.slug === b);
     if (!h) { $("#cmp").innerHTML = "<p class='note'>" + esc(nick[a]) + " and " + esc(nick[b]) + " never played each other in these games.</p>"; return; }
+    const SC = H.scopes.find((x) => x.key === key), sa = (SC.streak && SC.streak[a] && SC.streak[a][b]) || 0;
+    const ba = (SC.best && SC.best[a] && SC.best[a][b]) || 0, bb = (SC.best && SC.best[b] && SC.best[b][a]) || 0;
+    const streakTxt = sa > 0 ? esc(nick[a]) + " won last " + sa : sa < 0 ? esc(nick[b]) + " won last " + (-sa) : "none (last game tied)";
     const lead = h.w > h.l ? nick[a] + " leads" : h.l > h.w ? nick[b] + " leads" : "All square";
     const tile = (k, v) => "<div class='card tile'><span>" + k + "</span><b>" + v + "</b></div>";
     $("#cmp").innerHTML = "<div class='grid g4'>" + tile(esc(nick[a]) + " record", rec(h.w, h.l, h.t)) + tile(esc(nick[b]) + " record", rec(h.l, h.w, h.t)) +
-      tile("Games played", h.games) + tile("Playoff meetings", h.playoff[0] + h.playoff[1] + h.playoff[2] ? esc(nick[a]) + " " + rec(h.playoff[0], h.playoff[1], h.playoff[2]) : "none") + "</div>" +
+      tile("Games played", h.games) + tile("Playoff meetings", h.playoff[0] + h.playoff[1] + h.playoff[2] ? esc(nick[a]) + " " + rec(h.playoff[0], h.playoff[1], h.playoff[2]) : "none") + tile("Current streak", streakTxt) + tile("Longest streak", esc(nick[a]) + " " + ba + " / " + esc(nick[b]) + " " + bb) + "</div>" +
       "<p class='note' style='margin-top:8px'><b>" + esc(lead) + "</b>" + (h.w === h.l ? "" : " · " + pct(h.w > h.l ? h.pct : 1 - h.pct) + " win rate") + " · average score " + esc(nick[a]) + " " + num(h.pf / h.games) + " vs " + esc(nick[b]) + " " + num(h.pa / h.games) + "</p>";
     history.replaceState(null, "", "?a=" + a + "&b=" + b + "&scope=" + key);
   }
@@ -72,6 +96,7 @@ L.boot("h2h.html", "Head-to-head", async (meta) => {
     L.scopePills($("#pills"), H.scopes, key, (k) => { key = k; refresh(); });
     $("#scopeNote").textContent = L.SCOPE_NOTES[key];
     drawMatrix();
+    drawStreaks();
     compare();
   };
   refresh();

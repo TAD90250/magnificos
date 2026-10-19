@@ -38,6 +38,13 @@
       <p class="note"><a href="standings.html">All seasons &rarr;</a></p>
     </section>
 
+    <section id="thisweek" hidden>
+      <h2 class="sec-title"><span id="twTitle">This week's matchups</span> <small id="twSub"></small></h2>
+      <div class="pills" id="twPills" role="group" aria-label="Which games count"></div>
+      <div class="grid g3" id="twGrid" style="margin-top:12px"></div>
+      <p class="note" id="twNote"></p>
+    </section>
+
     <section id="watch" hidden>
       <h2 class="sec-title">Record watch <small id="watchSub"></small></h2>
       <div class="grid g2">
@@ -78,6 +85,36 @@ L.boot("index.html", null, async (meta) => {
       $("#photos").hidden = false;
     }
   } catch (e) { /* no public photos yet */ }
+
+
+  // this week's matchups: all-time series and current streak for each pairing
+  try {
+    const T = await getJSON("data/thisweek.json");
+    if (T.scopes && T.scopes.length && T.scopes[0].matchups.length) {
+      let tkey = L.pickScope(T.scopes, T.defaultScope);
+      $("#twTitle").textContent = "Week " + T.week + " matchups";
+      $("#twSub").textContent = "series history and streaks";
+      const card = (m) => {
+        const [w, l, t] = m.rec, g = w + l + t, a = m.a, b = m.b;
+        const head = "<div class='pad'><h3 class='sub-title' style='margin:0 0 6px'>" + ownerLink(a.slug, a.nick) + " <span class='muted'>vs</span> " + ownerLink(b.slug, b.nick) + "</h3>";
+        if (!g) return "<div class='card'>" + head + "<p class='muted' style='margin:0'>First meeting in these games.</p></div></div>";
+        const lead = w > l ? esc(a.nick) + " leads " + rec(w, l, t) : l > w ? esc(b.nick) + " leads " + rec(l, w, t) : "Series tied " + rec(w, l, t);
+        const sk = m.streak ? (m.streak > 0 ? esc(a.nick) : esc(b.nick)) + " has won the last " + Math.abs(m.streak) : "Last game was a tie";
+        const lg = m.last ? "Last meeting: " + (m.last.year + " wk " + m.last.week) + ", " + esc(a.nick) + " " + L.num(m.last.a) + " – " + L.num(m.last.b) + " " + esc(b.nick) : "";
+        return "<div class='card'>" + head + "<p style='margin:0 0 4px'>Series: <b>" + lead + "</b> <span class='muted'>· " + g + " game" + (g === 1 ? "" : "s") + "</span></p>" +
+          "<p style='margin:0 0 4px'>Streak: <b>" + sk + "</b></p>" +
+          "<p class='muted' style='margin:0;font-size:.85rem'>Longest run: " + esc(a.nick) + " " + m.bestA + " · " + esc(b.nick) + " " + m.bestB + "</p>" +
+          (lg ? "<p class='muted' style='margin:4px 0 0;font-size:.85rem'>" + lg + "</p>" : "") + "</div></div>";
+      };
+      const drawTw = () => {
+        L.scopePills($("#twPills"), T.scopes, tkey, (k) => { tkey = k; drawTw(); });
+        $("#twGrid").innerHTML = T.scopes.find((x) => x.key === tkey).matchups.map(card).join("");
+        $("#twNote").innerHTML = esc(L.SCOPE_NOTES[tkey]) + " Games before week " + T.week + " only. See <a href='h2h.html'>head-to-head</a> for every pairing.";
+      };
+      drawTw();
+      $("#thisweek").hidden = false;
+    }
+  } catch (e) { /* no matchups file yet: section stays hidden */ }
 
   // champions
   $("#champs").innerHTML = meta.champions.slice().reverse().map((c) =>
