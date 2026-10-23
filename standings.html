@@ -3,60 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Standings</title>
-<link rel="stylesheet" href="assets/site.css">
+<title>Seasons</title>
+<meta http-equiv="refresh" content="0; url=seasons.html">
+<script>location.replace("seasons.html" + location.search);</script>
 </head>
-<body>
-<main>
-  <div class="wrap">
-    <div class="pills" id="pills"></div>
-    <div class="grid g3" id="summary" style="margin-bottom:14px"></div>
-    <div id="warn"></div>
-    <div class="card table-wrap"><table id="tbl"></table></div>
-    <p class="note" id="foot2"></p>
-  </div>
-</main>
-<script src="assets/site.js"></script>
-<script>
-L.boot("standings.html", "Standings", async (meta) => {
-  const { $, $$, esc, getJSON, rec, num, ownerLink, RESULT_BADGE } = L;
-  const seasons = await getJSON("data/seasons.json");
-  const want = parseInt(new URLSearchParams(location.search).get("y"), 10);
-  let cur = seasons.find((s) => s.year === want) || seasons[0];
-
-  $("#pills").innerHTML = seasons.map((s) =>
-    '<button class="pill" data-y="' + s.year + '">' + s.year + "</button>").join("");
-  $$("#pills .pill").forEach((b) => b.addEventListener("click", () => {
-    cur = seasons.find((s) => s.year === +b.dataset.y);
-    history.replaceState(null, "", "?y=" + cur.year);
-    draw();
-  }));
-
-  function tile(k, v, sub, gold) {
-    return '<div class="card tile' + (gold ? " gold" : "") + '"><span>' + k + "</span><b>" + v + "</b><span style='text-transform:none;letter-spacing:0;font-weight:500'>" + sub + "</span></div>";
-  }
-
-  function draw() {
-    $$("#pills .pill").forEach((b) => b.classList.toggle("on", +b.dataset.y === cur.year));
-    $("#pageSub").textContent = cur.leagueName + " · " + cur.platform + " · " + cur.numTeams + " teams" +
-      (cur.scoring ? " · " + cur.scoring : "");
-    const c = cur.champion, r = cur.runnerUp;
-    $("#summary").innerHTML =
-      tile("Champion", c ? "🏆 " + ownerLink(c.slug, c.nick) : "TBD", c ? esc(c.team) : "Season in progress", !!c) +
-      tile("Runner-up", r ? ownerLink(r.slug, r.nick) : "–", r ? esc(r.team) : "") +
-      tile(cur.inProgress ? "Weeks played" : "Top scorer (PF)",
-           cur.inProgress ? cur.weeksPlayed : (function () { const t = cur.standings.slice().sort((a, b) => b.pf - a.pf)[0]; return ownerLink(t.slug, t.nick); })(),
-           cur.inProgress ? "of " + (cur.regWeeks || "?") + " regular-season weeks" : (function () { const t = cur.standings.slice().sort((a, b) => b.pf - a.pf)[0]; return num(t.pf) + " points"; })());
-    $("#warn").innerHTML = cur.inProgress
-      ? '<div class="warn">Season in progress — standings are ranked by record, then points for, through week ' + cur.weeksPlayed + ".</div>" : "";
-    $("#tbl").innerHTML = "<thead><tr><th>#</th><th class='l'>Owner</th><th class='l'>Team</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th class='l'>Result</th></tr></thead><tbody>" +
-      cur.standings.map((t) => "<tr" + (t.result === "Champion" ? " class='champ'" : "") + "><td class='rank'>" + t.rank +
-        "</td><td class='l'>" + ownerLink(t.slug, t.nick) + "</td><td class='l'>" + esc(t.team) + "</td><td>" + t.w + "</td><td>" + t.l +
-        "</td><td>" + t.t + "</td><td>" + num(t.pf) + "</td><td>" + num(t.pa) + "</td><td class='l'>" + RESULT_BADGE(t.result) + "</td></tr>").join("") + "</tbody>";
-    $("#foot2").textContent = "W-L-T and points are regular season. Final rank follows the playoff bracket (champion = 1).";
-  }
-  draw();
-});
-</script>
-</body>
+<body><p>This page moved to <a href="seasons.html">Seasons</a>.</p></body>
 </html>

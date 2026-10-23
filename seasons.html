@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seasons</title>
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  .br { display: flex; gap: 18px; align-items: stretch; overflow-x: auto; padding: 4px 2px 10px; }
+  .br-col { display: flex; flex-direction: column; min-width: 210px; flex: 1; }
+  .br-games { display: flex; flex-direction: column; justify-content: space-around; gap: 14px; flex: 1; }
+  .br-col h3 { margin: 0 0 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  .gm { background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; }
+  .gm .tm { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; font-size: .9rem; align-items: baseline; }
+  .gm .tm + .tm { border-top: 1px solid var(--line); }
+  .gm .tm.w { font-weight: 800; background: var(--accent-soft); }
+  .gm .tm.l { color: var(--muted); }
+  .gm .sd { color: var(--muted); font-size: .72rem; font-weight: 700; margin-right: 5px; }
+  .gm .sc { font-variant-numeric: tabular-nums; }
+  .br-champ { border-color: var(--gold); }
+  .br-champ .tm.w { background: var(--gold-soft); }
+  .wk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .gm .kind { padding: 3px 10px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--silver-soft); }
+  .grid-wk td, .grid-wk th { text-align: center; padding: 6px 7px; font-size: .8rem; white-space: nowrap; }
+  .grid-wk td:first-child, .grid-wk th:first-child { text-align: left; position: sticky; left: 0; background: var(--card); z-index: 2; font-weight: 700; }
+  .grid-wk th:first-child { background: var(--accent-soft); }
+  .grid-wk td.wn { color: var(--win); font-weight: 700; }
+  .grid-wk td.ls { color: var(--loss); }
+  .grid-wk td.po { background: var(--accent-soft); }
+</style>
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="pills" id="pills"></div>
+    <div class="grid g3" id="summary" style="margin-bottom:14px"></div>
+    <div id="warn"></div>
+    <section>
+      <h2 class="sec-title">Standings</h2>
+      <div class="card table-wrap"><table id="tbl"></table></div>
+      <p class="note" id="foot2"></p>
+    </section>
+    <section id="bracketSec" hidden>
+      <h2 class="sec-title">Playoff bracket <small id="brSub"></small></h2>
+      <div class="br" id="bracket"></div>
+      <p class="note">Seeds in brackets follow regular-season record, then points. Teams with a bye start in the semifinals.</p>
+    </section>
+    <section id="weeksSec" hidden>
+      <h2 class="sec-title">Scores by week</h2>
+      <div class="pills" id="wpills"></div>
+      <div class="wk-list" id="wkGames"></div>
+    </section>
+    <section id="gridSec" hidden>
+      <h2 class="sec-title">Every team, every week <small>points scored; green = win, red = loss</small></h2>
+      <div class="card table-wrap"><table class="grid-wk" id="wkGrid"></table></div>
+      <p class="note">Shaded columns are playoff weeks. Hover over a score to see the opponent.</p>
+    </section>
+  </div>
+</main>
+<script src="assets/site.js"></script>
+<script>
+L.boot("seasons.html", "Seasons", async (meta) => {
+  const { $, $$, esc, getJSON, rec, num, ownerLink, RESULT_BADGE } = L;
+  const seasons = await getJSON("data/seasons.json");
+  const want = parseInt(new URLSearchParams(location.search).get("y"), 10);
+  let cur = seasons.find((s) => s.year === want) || seasons[0];
+  let detail = null, wk = null;
+  const cache = {};
+
+  $("#pills").innerHTML = seasons.map((s) =>
+    '<button class="pill" data-y="' + s.year + '">' + s.year + "</button>").join("");
+  $$("#pills .pill").forEach((b) => b.addEventListener("click", () => {
+    cur = seasons.find((s) => s.year === +b.dataset.y);
+    history.replaceState(null, "", "?y=" + cur.year);
+    draw();
+  }));
+
+  const tile = (k, v, sub, gold) =>
+    '<div class="card tile' + (gold ? " gold" : "") + '"><span>' + k + "</span><b>" + v + "</b><span style='text-transform:none;letter-spacing:0;font-weight:500'>" + sub + "</span></div>";
+
+  const side = (t, win, tie) =>
+    '<div class="tm ' + (tie ? "" : win ? "w" : "l") + '"><span>' + (t.seed ? '<span class="sd">(' + t.seed + ")</span>" : "") + esc(t.nick) + '</span><span class="sc">' + num(t.score, 2) + "</span></div>";
+  const card = (g, showKind) => {
+    const kind = g.type === "Regular" ? "" : g.type.replace("Playoff - ", "");
+    return '<div class="gm' + (g.type === "Playoff - Championship" ? " br-champ" : "") + '">' + (showKind && kind ? '<div class="kind">' + esc(kind) + "</div>" : "") +
+      side(g.a, g.win === "a", g.win === "t") + side(g.b, g.win === "b", g.win === "t") + "</div>";
+  };
+
+  function drawBracket() {
+    const B = detail && detail.bracket;
+    $("#bracketSec").hidden = !B;
+    if (!B) return;
+    $("#brSub").textContent = cur.year;
+    $("#bracket").innerHTML = B.rounds.map((r) =>
+      '<div class="br-col"><h3>' + esc(r.name) + " · week " + r.week + "</h3><div class='br-games'>" + r.games.map((g) => card(g, false)).join("") + "</div></div>").join("") +
+      (B.third ? '<div class="br-col"><h3>3rd place game</h3><div class="br-games" style="justify-content:flex-end">' + card(B.third, false) + "</div></div>" : "");
+  }
+
+  function drawWeek() {
+    const W = detail ? detail.weeks : [];
+    $("#weeksSec").hidden = !W.length;
+    if (!W.length) return;
+    $("#wpills").innerHTML = W.map((w) =>
+      '<button class="pill' + (w.week === wk ? " on" : "") + '" data-w="' + w.week + '">' + (w.tag ? esc(w.tag) : "Wk " + w.week) + "</button>").join("");
+    $$("#wpills .pill").forEach((b) => b.addEventListener("click", () => { wk = +b.dataset.w; drawWeek(); }));
+    const cw = W.find((w) => w.week === wk) || W[W.length - 1];
+    $("#wkGames").innerHTML = cw.games.map((g) => card(g, true)).join("");
+  }
+
+  function drawGrid() {
+    const W = detail ? detail.weeks : [];
+    $("#gridSec").hidden = !W.length;
+    if (!W.length) return;
+    // per team: week -> {score, win, opp}
+    const by = {};
+    W.forEach((w) => w.games.forEach((g) => {
+      [["a", "b"], ["b", "a"]].forEach(([x, y]) => {
+        const key = g[x].slug || g[x].nick;
+        (by[key] = by[key] || {})[w.week] = { s: g[x].score, win: g.win === x ? 1 : g.win === "t" ? 0 : -1, opp: g[y].nick, t: g.type, po: g.type.indexOf("Playoff") === 0 };
+      });
+    }));
+    const weeks = W.map((w) => w.week);
+    const poWeeks = new Set(W.filter((w) => w.games.some((g) => g.type.indexOf("Playoff") === 0)).map((w) => w.week));
+    $("#wkGrid").innerHTML = "<thead><tr><th>Owner</th>" + weeks.map((w) => "<th" + (poWeeks.has(w) ? " class='po'" : "") + ">" + w + "</th>").join("") + "</tr></thead><tbody>" +
+      cur.standings.map((t) => {
+        const m = by[t.slug || t.nick] || {};
+        return "<tr><td>" + ownerLink(t.slug, t.nick) + "</td>" + weeks.map((w) => {
+          const c = m[w];
+          if (!c) return "<td class='muted" + (poWeeks.has(w) ? " po" : "") + "'>·</td>";
+          const cls = (c.win > 0 ? "wn" : c.win < 0 ? "ls" : "") + (poWeeks.has(w) ? " po" : "") + (c.t === "Consolation" ? " muted" : "");
+          return "<td class='" + cls + "' title='" + esc((c.t === "Regular" ? "" : c.t.replace("Playoff - ", "") + " · ") + "vs " + c.opp) + "'>" + num(c.s, 1) + "</td>";
+        }).join("") + "</tr>";
+      }).join("") + "</tbody>";
+  }
+
+  async function draw() {
+    $$("#pills .pill").forEach((b) => b.classList.toggle("on", +b.dataset.y === cur.year));
+    $("#pageSub").textContent = cur.leagueName + " · " + cur.platform + " · " + cur.numTeams + " teams" + (cur.scoring ? " · " + cur.scoring : "");
+    const c = cur.champion, r = cur.runnerUp;
+    const top = cur.standings.slice().sort((a, b) => b.pf - a.pf)[0];
+    $("#summary").innerHTML =
+      tile("Champion", c ? "🏆 " + ownerLink(c.slug, c.nick) : "TBD", c ? esc(c.team) : "Season in progress", !!c) +
+      tile("Runner-up", r ? ownerLink(r.slug, r.nick) : "–", r ? esc(r.team) : "") +
+      tile(cur.inProgress ? "Weeks played" : "Top scorer (PF)", cur.inProgress ? cur.weeksPlayed : ownerLink(top.slug, top.nick),
+           cur.inProgress ? "of " + (cur.regWeeks || "?") + " regular-season weeks" : num(top.pf) + " points");
+    $("#warn").innerHTML = cur.inProgress
+      ? '<div class="warn">Season in progress — standings are ranked by record, then points for, through week ' + cur.weeksPlayed + ".</div>" : "";
+    $("#tbl").innerHTML = "<thead><tr><th>#</th><th class='l'>Owner</th><th class='l'>Team</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th class='l'>Result</th></tr></thead><tbody>" +
+      cur.standings.map((t) => "<tr" + (t.result === "Champion" ? " class='champ'" : "") + "><td class='rank'>" + t.rank +
+        "</td><td class='l'>" + ownerLink(t.slug, t.nick) + "</td><td class='l'>" + esc(t.team) + "</td><td>" + t.w + "</td><td>" + t.l +
+        "</td><td>" + t.t + "</td><td>" + num(t.pf) + "</td><td>" + num(t.pa) + "</td><td class='l'>" + RESULT_BADGE(t.result) + "</td></tr>").join("") + "</tbody>";
+    $("#foot2").textContent = "W-L-T and points are regular season. Final rank follows the playoff bracket (champion = 1).";
+    const y = cur.year;
+    try { detail = cache[y] || (cache[y] = await getJSON("data/season/" + y + ".json")); } catch (e) { detail = null; }
+    if (cur.year !== y) return;                          // the user clicked another year while this one loaded
+    wk = detail && detail.weeks.length ? detail.weeks[detail.weeks.length - 1].week : null;
+    drawBracket(); drawWeek(); drawGrid();
+  }
+  draw();
+});
+</script>
+</body>
+</html>

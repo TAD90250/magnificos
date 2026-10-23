@@ -13,7 +13,7 @@
     <h1 id="h1">FFL <em>Magnificos</em></h1>
     <p id="tag">Fantasy football history, records and bragging rights.</p>
     <div class="cta">
-      <a class="btn" href="standings.html">Standings</a>
+      <a class="btn" href="seasons.html">Seasons</a>
       <a class="btn ghost" href="owners.html">Owners</a>
       <a class="btn ghost" href="records.html">Record book</a>
     </div>
@@ -35,7 +35,7 @@
     <section>
       <h2 class="sec-title"><span id="curTitle">This season</span> <small id="curSub"></small></h2>
       <div class="card table-wrap"><table id="cur"></table></div>
-      <p class="note"><a href="standings.html">All seasons &rarr;</a></p>
+      <p class="note"><a href="seasons.html">Scores, brackets and every season &rarr;</a></p>
     </section>
 
     <section id="thisweek" hidden>
@@ -152,7 +152,7 @@ L.boot("index.html", null, async (meta) => {
     $("#watch").hidden = false;
   } catch (e) { /* no activity file yet */ }
 
-  const links = [["standings.html", "Standings", "Every season, final tables"], ["owners.html", "Owners", "All-time leaderboard & profiles"],
+  const links = [["seasons.html", "Seasons", "Standings, weekly scores and playoff brackets"], ["owners.html", "Owners", "All-time leaderboard & profiles"],
     ["alltime.html", "All-time stats", "Wins, losses, win % and points, ranked"],
     ["records.html", "Record book", "Highest scores, blowouts, best seasons"], ["power.html", "Power rankings", "Best possible lineup, ranked weekly"], ["h2h.html", "Head-to-head", "Who owns who"],
     ["payouts.html", "Payouts", "Weekly and season-end prizes, and winners"], ["money.html", "Money due", "Who owes, who is owed"], ["rules.html", "League rules", "How the league works"],

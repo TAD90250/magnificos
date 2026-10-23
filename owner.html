@@ -45,7 +45,7 @@ L.boot("owners.html", "Owner", async (meta) => {
   // season table
   const S = sc.seasons;
   const tot = S.reduce((a, s) => ({ w: a.w + s.w, l: a.l + s.l, t: a.t + s.t, pf: a.pf + (s.pf || 0), pa: a.pa + (s.pa || 0) }), { w: 0, l: 0, t: 0, pf: 0, pa: 0 });
-  const seasonRows = S.map((s) => "<tr" + (s.champion ? " class='champ'" : "") + "><td class='l'><a href='standings.html?y=" + s.year + "'>" + s.year + "</a></td>" +
+  const seasonRows = S.map((s) => "<tr" + (s.champion ? " class='champ'" : "") + "><td class='l'><a href='seasons.html?y=" + s.year + "'>" + s.year + "</a></td>" +
     "<td class='l'>" + esc(s.team) + "</td><td>" + (s.games ? rec(s.w, s.l, s.t) : "–") + "</td><td>" + (s.games ? num(s.pf) : "–") + "</td><td>" + (s.games ? num(s.pa) : "–") + "</td>" +
     "<td>" + (s.finish ? L.ordinal(s.finish) : "–") + "</td><td class='l'>" + RESULT_BADGE(s.result) + "</td>" +
     "<td class='l'>" + (s.draftR1 ? esc(s.draftR1.player) + " <span class='muted'>(#" + s.draftR1.pick + ")</span>" : "<span class='muted'>–</span>") + "</td></tr>").join("");
