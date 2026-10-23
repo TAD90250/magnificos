@@ -419,6 +419,63 @@ def build(workbook, out_dir):
                             "weeksPlayed": wk, "inProgress": champ is None})
     write_json(os.path.join(out_dir, "seasons.json"), seasons_out)
 
+    # ============ week-by-week scores and playoff brackets (one file per season: data/season/<year>.json) ============
+    season_dir = os.path.join(out_dir, "season")
+    os.makedirs(season_dir, exist_ok=True)
+    for old_ in os.listdir(season_dir):
+        if old_.endswith(".json"):
+            os.remove(os.path.join(season_dir, old_))
+    TYPE_ORDER = {"Playoff - Championship": 0, "Playoff - 3rd Place": 1, "Playoff - Semifinal": 2, "Playoff - Quarterfinal": 3,
+                  "Consolation": 4}
+
+    def _side(ts, score, seed):
+        v = team_rows[ts]
+        return {"slug": slug.get(v["owner"]), "nick": nick(v["owner"]), "team": v["name"], "score": rnd(score), "seed": seed.get(ts)}
+
+    for y_ in sorted(season_info):
+        yts = [ts for ts, v in team_rows.items() if v["year"] == y_]
+        seed_order = sorted(yts, key=lambda t: (-(reg[t][0] + 0.5 * reg[t][2]), -reg[t][3]))
+        seed = {ts: i + 1 for i, ts in enumerate(seed_order)}
+        by_week = defaultdict(list)
+        for gy, gw, gt, a_, sa, b_, sb in games:
+            if gy != y_ or a_ not in team_rows or b_ not in team_rows:
+                continue
+            by_week[gw].append({"type": gt, "a": _side(a_, sa, seed), "b": _side(b_, sb, seed),
+                                "win": "a" if sa > sb else "b" if sb > sa else "t"})
+        weeks_out = []
+        for w_ in sorted(by_week):
+            gl = sorted(by_week[w_], key=lambda g: TYPE_ORDER.get(g["type"], 5))
+            kinds = {g["type"] for g in gl}
+            tag = ("Final" if "Playoff - Championship" in kinds else "Semis" if "Playoff - Semifinal" in kinds
+                   else "Quarters" if "Playoff - Quarterfinal" in kinds else None)
+            weeks_out.append({"week": w_, "tag": tag, "games": gl})
+        # bracket: Quarterfinal -> Semifinal -> Championship (+ 3rd place); a bye team appears first in the semifinal
+        po = [(w_["week"], g) for w_ in weeks_out for g in w_["games"] if g["type"].startswith("Playoff")]
+        rounds = []
+        for tname, label in (("Playoff - Quarterfinal", "Quarterfinals"), ("Playoff - Semifinal", "Semifinals"),
+                             ("Playoff - Championship", "Championship")):
+            gl = [g for _, g in po if g["type"] == tname]
+            if gl:
+                rounds.append({"name": label, "week": next(wk for wk, g in po if g["type"] == tname), "games": gl})
+
+        def _best_seed(g):
+            return min(x for x in (g["a"]["seed"], g["b"]["seed"]) if x)
+        semi = next((r for r in rounds if r["name"] == "Semifinals"), None)
+        if semi:
+            semi["games"].sort(key=_best_seed)
+        qf = next((r for r in rounds if r["name"] == "Quarterfinals"), None)
+        if qf and semi:
+            def _feeds(g):
+                win = g["a"] if g["win"] == "a" else g["b"] if g["win"] == "b" else None
+                for i, sg in enumerate(semi["games"]):
+                    if win and win["slug"] in (sg["a"]["slug"], sg["b"]["slug"]):
+                        return i
+                return 99
+            qf["games"].sort(key=_feeds)
+        third = next((g for _, g in po if g["type"] == "Playoff - 3rd Place"), None)
+        write_json(os.path.join(season_dir, f"{y_}.json"),
+                   {"year": y_, "weeks": weeks_out, "bracket": {"rounds": rounds, "third": third} if rounds else None})
+
     # ============ all-time totals (game scopes) ============
     alltime = {"scopes": []}
     for key, label, fn in scope_defs:
