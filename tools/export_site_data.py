@@ -184,6 +184,47 @@ def load_rules(path):
 def build(workbook, out_dir):
     wb = openpyxl.load_workbook(workbook, read_only=True)
     owners, teams, games, players, roster = load_tables(wb)
+
+    # ---- merge duplicate players: the same person can sit in the Players sheet under a Yahoo id AND a Sleeper id ----
+    def _nm_key(nm, pos):
+        if pos in ("DST", "DEF") and str(nm or "").strip():            # "New England Patriots" and "Patriots" are one defense
+            return (str(nm).strip().lower().split()[-1], "DST")
+        t = re.sub(r"[^a-z ]", "", str(nm or "").lower().replace("-", " "))
+        t = " ".join(w for w in t.split() if w not in ("jr", "sr", "ii", "iii", "iv", "v"))
+        return (t, pos or "")
+    _extra = {r[0]: (r[3], r[4]) for r in wb["Players"].iter_rows(min_row=2, values_only=True) if r[0]}
+    _grp = defaultdict(list)                                   # sleeper id -> pids
+    for pid_ in players:
+        sid_ = str(_extra.get(pid_, (None, None))[1] or "").strip()
+        if sid_:
+            _grp[sid_].append(pid_)
+    _name_groups = defaultdict(set)                            # (name, pos) -> sleeper ids that carry it
+    for sid_, pids_ in _grp.items():
+        for pid_ in pids_:
+            _name_groups[_nm_key(*players[pid_])].add(sid_)
+    canon = {}
+    for sid_, pids_ in _grp.items():
+        best_ = sorted(pids_, key=lambda x: (0 if str(x).startswith("Y") else 1, str(x)))[0]
+        for pid_ in pids_:
+            canon[pid_] = best_
+    _by_name = defaultdict(list)                               # legacy rows with no sleeper id: link by name when unambiguous
+    for pid_ in players:
+        if pid_ not in canon:
+            _by_name[_nm_key(*players[pid_])].append(pid_)
+    for k_, pids_ in _by_name.items():
+        sids_ = _name_groups.get(k_, set())
+        if len(sids_) == 1 and len(pids_) == 1:
+            canon[pids_[0]] = canon[_grp[next(iter(sids_))][0]]
+    if any(k != v for k, v in canon.items()):
+        _seen = {}
+        for y_, w_, ts_, pid_, st_, pts_ in roster:
+            key_ = (y_, w_, ts_, canon.get(pid_, pid_))
+            old_ = _seen.get(key_)
+            if old_ is None or (pts_ is not None and (old_[5] is None or pts_ > old_[5])):
+                _seen[key_] = (y_, w_, ts_, key_[3], bool(st_) or bool(old_ and old_[4]), pts_)
+            elif st_:
+                _seen[key_] = old_[:4] + (True,) + old_[5:]
+        roster = list(_seen.values())
     team_rows, season_info, draft = load_extra(wb)
     wb.close()
 
@@ -432,6 +473,36 @@ def build(workbook, out_dir):
         v = team_rows[ts]
         return {"slug": slug.get(v["owner"]), "nick": nick(v["owner"]), "team": v["name"], "score": rnd(score), "seed": seed.get(ts)}
 
+    # points a player scored while STARTED in a regular-season game (kickers / defenses follow the league's exclusion setting)
+    _gt = {(r["y"], r["w"], r["ts"]): r["t"] for r in rows}
+    _pl = defaultdict(lambda: defaultdict(lambda: {"pts": 0.0, "g": 0, "own": defaultdict(float)}))
+    for ry, rw, rts, rpid, rstarted, rpts in roster:
+        if not (rstarted and rpts is not None and rts in teams) or _gt.get((ry, rw, rts)) != "Regular":
+            continue
+        d_ = _pl[ry][rpid]
+        d_["pts"] += rpts
+        d_["g"] += 1
+        d_["own"][owner_of(rts)] += rpts
+
+    def _top_players(y_):
+        by_pos = defaultdict(list)
+        for pid_, d_ in _pl.get(y_, {}).items():
+            nm_, pos_ = pinfo(pid_)
+            if pos_ not in ("QB", "RB", "WR", "TE", "DST", "DEF", "K"):
+                continue
+            own_ = sorted(d_["own"].items(), key=lambda kv: -kv[1])
+            by_pos["DEF" if pos_ == "DST" else pos_].append(
+                {"name": nm_, "pos": pos_, "pts": rnd(d_["pts"], 1), "g": d_["g"], "avg": rnd(d_["pts"] / d_["g"], 1),
+                 "owners": [{"slug": slug.get(o_), "nick": nick(o_)} for o_, _ in own_[:3]]})
+        out_ = {}
+        non_qb = [d for k_, v_ in by_pos.items() if k_ != "QB" for d in v_]
+        out_["OTHER"] = sorted(non_qb, key=lambda d: (-d["pts"], d["name"]))[:10]
+        for pos_ in ("QB", "RB", "WR", "TE", "DEF", "K"):
+            lst_ = sorted(by_pos.get(pos_, []), key=lambda d: (-d["pts"], d["name"]))[:5]
+            if lst_:
+                out_[pos_] = lst_
+        return out_
+
     for y_ in sorted(season_info):
         yts = [ts for ts, v in team_rows.items() if v["year"] == y_]
         seed_order = sorted(yts, key=lambda t: (-(reg[t][0] + 0.5 * reg[t][2]), -reg[t][3]))
@@ -474,7 +545,8 @@ def build(workbook, out_dir):
             qf["games"].sort(key=_feeds)
         third = next((g for _, g in po if g["type"] == "Playoff - 3rd Place"), None)
         write_json(os.path.join(season_dir, f"{y_}.json"),
-                   {"year": y_, "weeks": weeks_out, "bracket": {"rounds": rounds, "third": third} if rounds else None})
+                   {"year": y_, "weeks": weeks_out, "bracket": {"rounds": rounds, "third": third} if rounds else None,
+                    "players": _top_players(y_)})
 
     # ============ all-time totals (game scopes) ============
     alltime = {"scopes": []}
