@@ -26,6 +26,8 @@
   .grid-wk th:first-child { background: var(--accent-soft); }
   .grid-wk td.wn { color: var(--win); font-weight: 700; }
   .grid-wk td.ls { color: var(--loss); }
+  .mini { margin: 0 0 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+  #plSec td, #plSec th { padding: 6px 8px; font-size: .86rem; }
   .grid-wk td.po { background: var(--accent-soft); }
 </style>
 </head>
@@ -49,6 +51,12 @@
       <h2 class="sec-title">Scores by week</h2>
       <div class="pills" id="wpills"></div>
       <div class="wk-list" id="wkGames"></div>
+    </section>
+    <section id="plSec" hidden>
+      <h2 class="sec-title">Top players <small id="plSub"></small></h2>
+      <div id="plTop" style="margin-bottom:16px"></div>
+      <div class="grid g2" id="plGrid"></div>
+      <p class="note" id="plNote"></p>
     </section>
     <section id="gridSec" hidden>
       <h2 class="sec-title">Every team, every week <small>points scored; green = win, red = loss</small></h2>
@@ -133,6 +141,22 @@ L.boot("seasons.html", "Seasons", async (meta) => {
       }).join("") + "</tbody>";
   }
 
+  const POS_TITLE = { QB: "Top 5 · Quarterbacks", OTHER: "Top 10 · Non-QBs", RB: "Top 5 · Running backs", WR: "Top 5 · Wide receivers", TE: "Top 5 · Tight ends", DEF: "Top 5 · Defenses / special teams", K: "Top 5 · Kickers" };
+  function drawPlayers() {
+    const P = detail && detail.players;
+    const keys = P ? ["OTHER", "QB", "RB", "WR", "TE", "DEF", "K"].filter((k) => P[k] && P[k].length) : [];
+    $("#plSec").hidden = !keys.length;
+    if (!keys.length) return;
+    $("#plSub").textContent = cur.year;
+    const html = (k) => '<div><h3 class="mini">' + POS_TITLE[k] + '</h3><div class="card table-wrap"><table><thead><tr><th>#</th><th class="l">Player</th>' + (k === "OTHER" ? "<th>Pos</th>" : "") + '<th class="l">Owner</th><th>Pts</th><th>GP</th><th>Avg</th></tr></thead><tbody>' +
+      P[k].map((p, i) => "<tr><td class='rank'>" + (i + 1) + "</td><td class='l'>" + esc(p.name) + "</td>" + (k === "OTHER" ? "<td>" + esc(p.pos === "DST" ? "DEF" : p.pos) + "</td>" : "") + "<td class='l'>" +
+        p.owners.map((o) => ownerLink(o.slug, o.nick)).join(", ") + "</td><td>" + num(p.pts, 1) + "</td><td>" + p.g + "</td><td>" + num(p.avg, 1) + "</td></tr>").join("") +
+      "</tbody></table></div></div>";
+    $("#plTop").innerHTML = keys.includes("OTHER") ? html("OTHER") : "";
+    $("#plGrid").innerHTML = keys.filter((k) => k !== "OTHER").map(html).join("");
+    $("#plNote").textContent = "Points scored while in a starting lineup during the regular season. Owner is who started the player (the one with the most points first).";
+  }
+
   async function draw() {
     $$("#pills .pill").forEach((b) => b.classList.toggle("on", +b.dataset.y === cur.year));
     $("#pageSub").textContent = cur.leagueName + " · " + cur.platform + " · " + cur.numTeams + " teams" + (cur.scoring ? " · " + cur.scoring : "");
@@ -154,7 +178,7 @@ L.boot("seasons.html", "Seasons", async (meta) => {
     try { detail = cache[y] || (cache[y] = await getJSON("data/season/" + y + ".json")); } catch (e) { detail = null; }
     if (cur.year !== y) return;                          // the user clicked another year while this one loaded
     wk = detail && detail.weeks.length ? detail.weeks[detail.weeks.length - 1].week : null;
-    drawBracket(); drawWeek(); drawGrid();
+    drawBracket(); drawWeek(); drawPlayers(); drawGrid();
   }
   draw();
 });
